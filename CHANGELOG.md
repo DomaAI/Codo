@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.30.2
+
+### Model picker, teams and groups in the Windows and Linux app
+
+- **Model picker like on Mac.** Providers with their logos, model families, search across every provider, a card for agents on this computer (Claude Code, Codex) and the backup brain that finishes a turn when a plan runs out.
+- **Agent teams in the window.** Pick a team template in the model picker and send your task: the lead asks its questions, you approve the plan, follow every member live, then merge, keep a branch or open a pull request.
+- **Groups.** Create a group from a ready team or your own agents, pick how it works (conversation, side by side, split, cross review, vote, pipeline), set limits and talk to everyone at once with `@mentions`. Earlier runs come back after a restart.
+- **18 languages, done.** Czech, Danish, Spanish, French, Hungarian, Italian, Japanese, Korean, Dutch, Portuguese, Romanian, Swedish, Turkish and Chinese now have every window text, and say "this computer" instead of "this Mac".
+
+### Fixes
+
+- A group's "at once per provider" setting was lost on every save.
+- The window showed `agent:claude` instead of Claude Code before the model list loaded.
+
 ## 0.30.1
 
 ### Bots and agents work with the window closed
