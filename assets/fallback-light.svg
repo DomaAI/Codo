@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="250" viewBox="0 0 960 250" font-family="-apple-system,Segoe UI,Helvetica,Arial,sans-serif">
+<rect width="960" height="250" rx="14" fill="#ffffff"/>
+<text x="40" y="44" font-size="17" font-weight="600" fill="#1f2328">One conversation, many brains</text>
+<text x="40" y="68" font-size="13.5" fill="#59636e">When a plan runs out, the same turn moves on with the whole history, files and plan. The limited agent rests for an hour.</text>
+<g opacity="0.55"><rect x="40" y="104" width="196" height="72" rx="12" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1.2"/>
+<text x="58" y="135" font-size="15" font-weight="600" fill="#1f2328">Claude Code</text>
+<text x="58" y="157" font-size="12.5" fill="#59636e">plan limit reached</text></g>
+<path d="M242 140.0 H262" stroke="#59636e" stroke-width="1.5" fill="none"/><path d="M258 136.0 L263 140.0 L258 144.0" stroke="#59636e" stroke-width="1.5" fill="none"/>
+<g opacity="0.55"><rect x="268" y="104" width="196" height="72" rx="12" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1.2"/>
+<text x="286" y="135" font-size="15" font-weight="600" fill="#1f2328">Codex</text>
+<text x="286" y="157" font-size="12.5" fill="#59636e">plan limit reached</text></g>
+<path d="M470 140.0 H490" stroke="#59636e" stroke-width="1.5" fill="none"/><path d="M486 136.0 L491 140.0 L486 144.0" stroke="#59636e" stroke-width="1.5" fill="none"/>
+<g><rect x="496" y="104" width="196" height="72" rx="12" fill="#f6f8fa" stroke="#1f2328" stroke-width="2"/>
+<text x="514" y="135" font-size="15" font-weight="600" fill="#1f2328">Your API key</text>
+<text x="514" y="157" font-size="12.5" fill="#59636e">answers the turn</text></g>
+<path d="M698 140.0 H718" stroke="#59636e" stroke-width="1.5" fill="none"/><path d="M714 136.0 L719 140.0 L714 144.0" stroke="#59636e" stroke-width="1.5" fill="none"/>
+<g><rect x="724" y="104" width="196" height="72" rx="12" fill="#f6f8fa" stroke="#d1d9e0" stroke-width="1.2" stroke-dasharray="5 5"/>
+<text x="742" y="135" font-size="15" font-weight="600" fill="#1f2328">Local model</text>
+<text x="742" y="157" font-size="12.5" fill="#59636e">next in line</text></g>
+<path d="M40 206 H920" stroke="#d1d9e0" stroke-width="1.2"/>
+<circle cx="138.0" cy="206" r="4" fill="#59636e"/>
+<circle cx="366.0" cy="206" r="4" fill="#59636e"/>
+<circle cx="594.0" cy="206" r="4" fill="#1f2328"/>
+<circle cx="822.0" cy="206" r="4" fill="#59636e"/>
+<text x="40" y="230" font-size="12.5" fill="#59636e">Same conversation, same project folder, same plan and to do list, every edit can be undone</text>
+</svg>

@@ -60,7 +60,7 @@ def make_pptx() -> bytes:
 
     def sp(ph, *paras):
         return ("<p:sp><p:nvSpPr><p:nvPr>" + (f'<p:ph type="{ph}"/>' if ph else "") + "</p:nvPr></p:nvSpPr><p:txBody>"
-                + "".join(f'<a:p>{f'<a:pPr lvl="{l}"/>' if l else ""}<a:r><a:t>{t}</a:t></a:r></a:p>' for t, l in paras)
+                + "".join('<a:p>' + (f'<a:pPr lvl="{l}"/>' if l else "") + f'<a:r><a:t>{t}</a:t></a:r></a:p>' for t, l in paras)
                 + "</p:txBody></p:sp>")
     s1 = f"<p:sld {p}><p:cSld><p:spTree>" + sp("ctrTitle", ("Plan na 2027", 0)) + sp("subTitle", ("Zespół sprzedaży", 0)) + "</p:spTree></p:cSld></p:sld>"
     s2 = (f"<p:sld {p}><p:cSld><p:spTree>" + sp("title", ("Cele", 0)) + sp("", ("Więcej klientów", 0), ("Polska", 1), ("Niemcy", 1), ("Niższe koszty", 0))

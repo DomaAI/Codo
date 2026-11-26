@@ -10,7 +10,7 @@ Codo drives them all from one session, and when one hits its plan limit the same
 keeps going on the next one.
 
 [![CI](https://github.com/DomaAI/Codo/actions/workflows/ci.yml/badge.svg)](https://github.com/DomaAI/Codo/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/DomaAI/Codo)](https://github.com/DomaAI/Codo/releases/latest)
+[![Release](https://img.shields.io/github/v/release/DomaAI/Codo?label=release&color=blue)](https://github.com/DomaAI/Codo/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![Linux | macOS | Windows](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey)
@@ -20,12 +20,34 @@ curl -fsSL https://github.com/DomaAI/Codo/releases/latest/download/install.sh | 
 codo
 ```
 
+Windows: [`CodoSetup-x64.exe`](https://github.com/DomaAI/Codo/releases/latest/download/CodoSetup-x64.exe) or
+`irm https://github.com/DomaAI/Codo/releases/latest/download/install.ps1 | iex`, then `codo ui` opens the app.
+
+<p align="center">
+  <img src="assets/screens/mac-main.webp" width="900" alt="Codo app: agents Luna, Max, Josh and Mia in the sidebar, Claude Code as the brain">
+</p>
+
+## Use the plans you already pay for
+
+No new subscription. Codo drives **Claude Code on your Claude plan**, **Codex on your ChatGPT plan**,
+Gemini CLI, any API key or a local model, all from one conversation. When one plan hits its limit,
+the same turn moves on to the next brain with the whole history, files and plan.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/fallback-dark.svg">
+    <img src="assets/fallback-light.svg" width="900" alt="Claude Code and Codex hit their plan limits, your API key answers the turn, a local model is next in line">
+  </picture>
+</p>
+
 ## Why Codo
 
 - **Never stuck on a plan limit.** Claude Code ran out? The turn moves to Codex, Gemini, your API key
   or a local model, with the whole conversation, and the limited agent rests for an hour.
 - **Bring your own everything.** OpenAI, Anthropic, xAI, Google, Mistral, DeepSeek, Groq, OpenRouter,
   Ollama, LM Studio or any `/v1` URL. Several accounts at once, pick a model per turn with `/model`.
+- **Agents with a face.** Luna splits the work, Josh researches, Max builds, Mia reviews. Each one keeps
+  its own conversation, memory and brain, and they answer you on Telegram, Discord, Slack or e-mail.
 - **Agent teams.** `codo team run "goal"`: a lead splits the work, each member gets its own git copy,
   reviewers check it, you approve the plan and the merge, and `apply --pr` opens a pull request.
 - **Agent groups across providers.** `codo group`: Claude, Codex and Gemini side by side, in parallel
@@ -34,16 +56,83 @@ codo
   keeps a log, retries network errors and stops at hard budget and time limits.
 - **Always-on agents on a server.** `codo host` keeps agents running under systemd or launchd and
   answers on Telegram, Discord, Slack, WhatsApp, Signal and e-mail. Agents write to each other and
-  hand tasks over, on your Mac and on the server together.
+  hand tasks over, on your computer and on the server together.
 - **MCP both ways.** `codo mcp` exposes Codo tools (browser, team, mail) to Claude Code and Codex.
 - **Skills that the agent writes itself**, plus skills from GitHub (`codo skills`).
-- **A browser window when you want one.** `codo ui` opens chat, approvals and file diffs in the browser
-  on Linux and Windows. On macOS there is a native app (see below).
 - **Undo for every edit.** Each file change is backed up; `/undo` reverts it, `/diff` shows it.
 - **Phone control.** With the DomaAI app (iOS, Android), `/rc` lets you follow the session and answer
   its questions from your phone. Commands that change things still ask for consent.
 - **A single Python file.** No dependencies beyond Python 3.9+, and the installer brings Python along
   when the computer has none.
+
+## Screenshots
+
+**Windows and Linux** (`codo ui`, the app in its own window)
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screens/win-code.webp" alt="Codo on Windows and Linux: start screen with persistent agents"></td>
+    <td width="50%"><img src="assets/screens/win-models.webp" alt="Model picker: Claude Code, Codex and Grok on this computer, backup brain"></td>
+  </tr>
+  <tr>
+    <td align="center">Your agents and one place to start</td>
+    <td align="center">Pick a brain, set a backup brain for plan limits</td>
+  </tr>
+  <tr>
+    <td><img src="assets/screens/win-group.webp" alt="New group: ready teams, your agents and six ways of working"></td>
+    <td><img src="assets/screens/win-hive.webp" alt="Bots: describe a job in your own words or take a ready one"></td>
+  </tr>
+  <tr>
+    <td align="center">Groups: a ready team or your own pick</td>
+    <td align="center">Bots that work on their own and write to you</td>
+  </tr>
+</table>
+
+**macOS** (native app)
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screens/mac-workflows.webp" alt="Workflows: plan, build, review, every step an agent"></td>
+    <td width="50%"><img src="assets/screens/mac-delegate.webp" alt="Hand over work to an agent or a swarm"></td>
+  </tr>
+  <tr>
+    <td align="center">Workflows: every step is an agent</td>
+    <td align="center">Hand over work, the result comes back</td>
+  </tr>
+  <tr>
+    <td><img src="assets/screens/mac-models.webp" alt="Model picker on Mac: one agent, team or compare"></td>
+    <td><img src="assets/screens/mac-main-dark.webp" alt="Codo for Mac in dark appearance"></td>
+  </tr>
+  <tr>
+    <td align="center">One agent, a team, or compare models</td>
+    <td align="center">Light and dark, in 18 languages</td>
+  </tr>
+</table>
+
+## How Codo compares
+
+| | One coding agent on its own | With Codo |
+| --- | --- | --- |
+| Plan limit reached | You wait until it resets | The same conversation continues on your next plan, key or local model |
+| Models | One provider | Claude Code, Codex, Gemini CLI, 20+ ACP agents, any `/v1` API, local models |
+| Several agents at once | Separate terminals, copy and paste between them | Teams in separate git copies, groups with review and voting, rooms and agent mail |
+| Long work | Stops when you close the terminal | Marathon mode for hours, always-on agents on a server |
+| Where it answers | The terminal | Terminal, app window, phone, Telegram, Discord, Slack, WhatsApp, Signal, e-mail |
+| Undo | Depends on the tool | A backup of every edit, `/undo` and `/diff` |
+| Cost | Another subscription | Free and open source (Apache 2.0), uses the plans you already have |
+
+### On every system
+
+| | macOS | Windows | Linux |
+| --- | :---: | :---: | :---: |
+| Terminal agent (`codo`) | ✓ | ✓ | ✓ |
+| App window with agents, bots, workflows, groups, Office, settings | native app | `codo ui` | `codo ui` |
+| Teams, groups, marathon mode, MCP, skills | ✓ | ✓ | ✓ |
+| Always-on agents and messengers (`codo host`) | ✓ | ✓ | ✓ |
+| Model picker with backup brain, team runs in the window | ✓ | ✓ | ✓ |
+| Compare models side by side in the window | ✓ | | |
+| Rooms, iMessage, Gmail and Calendar triggers, system notifications | ✓ | | |
+| 18 languages, light and dark | ✓ | ✓ | ✓ |
 
 ## How it works
 
@@ -82,7 +171,7 @@ codo
 | Area | What Codo does | Command |
 | --- | --- | --- |
 | Conversation | Interactive session, one shot task, resume, print mode for scripts with JSON output | `codo`, `codo "task"`, `codo -c`, `codo resume`, `codo -p --json` |
-| App window | The full Codo app on Windows and Linux, the same as on Mac: code, Office, bots and swarms, workflows, delegate, persistent agents and settings, in 18 languages (`--tab` for a browser tab) | `codo ui` |
+| App window | The full Codo app on Windows and Linux, the same as on Mac: code, model picker, agent teams and groups, Office, bots and swarms, workflows, delegate, persistent agents and settings, in 18 languages (`--tab` for a browser tab) | `codo ui` |
 | Long work | Works alone for hours or days with a plan, log, queue of goals and hard limits | `codo work`, `codo work add`, `codo work status` |
 | Teams | A lead splits a goal, members work in separate git copies, reviewers check, you approve the plan and the merge, a pull request at the end | `codo team run`, `codo team apply --pr` |
 | Groups of agents | Claude, Codex and Gemini in parallel with a synthesis, split work, cross review, voting, a pipeline or a group chat | `codo group` |
