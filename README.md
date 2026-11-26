@@ -72,6 +72,11 @@ administrator rights.
 Set `CODO_NO_DEPS=1` to install nothing but Codo itself; the installer then only tells you what is
 missing. `codo doctor` shows the state of every dependency and the command that adds it.
 
+
+### Single files, no Python needed
+
+Every release also has ready to run files: `codo-windows-x64.exe`, `codo-linux-x64`, `codo-linux-arm64`, `codo-macos-arm64` (Apple Silicon) and `codo-macos-x64` (Intel). Download one from [Releases](https://github.com/DomaAI/codo/releases/latest), make it executable on macOS and Linux (`chmod +x`) and run it. The Mac app (Apple Silicon and Intel) is on [domaai.pl/pobierz-codo](https://domaai.pl/pobierz-codo.html).
+
 ## Codo for Mac
 
 A native window on top of the same engine: terminal and preview browser in the window, bots and

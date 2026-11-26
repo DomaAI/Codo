@@ -5,7 +5,37 @@ on:
 permissions:
   contents: write
 jobs:
+  binaries:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, name: codo-linux-x64 }
+          - { os: ubuntu-22.04-arm, name: codo-linux-arm64 }
+          - { os: windows-latest, name: codo-windows-x64.exe }
+          - { os: macos-14, name: codo-macos-arm64 }
+          - { os: macos-13, name: codo-macos-x64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Build a single file (no Python needed)
+        shell: bash
+        run: |
+          python -m pip install --quiet pyinstaller certifi
+          cp codo codo_main.py
+          pyinstaller --onefile --name codo --collect-data certifi --hidden-import certifi codo_main.py
+          mkdir -p out
+          if [ -f dist/codo.exe ]; then cp dist/codo.exe "out/${{ matrix.name }}"; else cp dist/codo "out/${{ matrix.name }}"; fi
+      - name: Smoke test
+        shell: bash
+        run: ./out/${{ matrix.name }} --version
+      - uses: actions/upload-artifact@v4
+        with: { name: "${{ matrix.name }}", path: "out/${{ matrix.name }}" }
+
   release:
+    needs: binaries
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -13,15 +43,39 @@ jobs:
         run: |
           file_ver="$(sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' codo | head -1)"
           [ "v$file_ver" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match VERSION $file_ver"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with: { path: bins, merge-multiple: true }
       - name: Build assets
         run: |
           mkdir dist
           cp codo install.sh install.ps1 dist/
-          cd dist && sha256sum codo install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS
+          cp bins/* dist/
+          chmod +x dist/codo-linux-* dist/codo-macos-* || true
+          cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Release notes
         run: |
           awk -v v="${GITHUB_REF_NAME#v}" '$0 == "## " v {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
-      - name: Create release
+          cat >> notes.md <<'NOTES'
+
+          ### Download
+
+          | System | File |
+          |---|---|
+          | Windows 10/11 (x64) | `codo-windows-x64.exe` |
+          | Linux x64 | `codo-linux-x64` |
+          | Linux ARM64 | `codo-linux-arm64` |
+          | macOS Apple Silicon | `codo-macos-arm64` |
+          | macOS Intel | `codo-macos-x64` |
+
+          Single files, no Python needed. Or install with one line: `curl -fsSL https://github.com/DomaAI/codo/releases/latest/download/install.sh | bash` (macOS, Linux) and `irm https://github.com/DomaAI/codo/releases/latest/download/install.ps1 | iex` (Windows).
+          NOTES
+      - name: Create or update the release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Codo $GITHUB_REF_NAME" --notes-file notes.md --draft
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "Codo $GITHUB_REF_NAME" --notes-file notes.md --draft
+          fi
