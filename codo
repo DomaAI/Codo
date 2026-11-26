@@ -49,7 +49,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VERSION = "0.28.0"
+VERSION = "0.29.0"
 APP_NAME = "Codo"                # marka; komenda: codo (dawne: domaai, doma, domaai-code)
 PROJECT_NOTES = "Codo.md"        # pamięć projektu; DOMAAI.md czytany dla zgodności
 API_URL = os.environ.get("DOMA_API_URL", "https://bymadd.pl").rstrip("/")
@@ -102,6 +102,12 @@ for _stream in (sys.stdout, sys.stderr):
             _stream.reconfigure(errors="replace")
     except Exception:
         pass  # nosec B110 — strumień bez reconfigure (podmieniony w testach)
+try:
+    # Wejście z potoku albo TERM=dumb: bajt spoza UTF-8 nie wywraca REPL-a (UnicodeDecodeError w input()).
+    if sys.stdin:
+        sys.stdin.reconfigure(errors="replace")
+except Exception:
+    pass  # nosec B110
 
 
 def _c(code: str, s: str) -> str:
@@ -634,10 +640,34 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> None:
+    """Zapis przez unikalny plik tymczasowy i os.replace. Ustawienia zapisuje naraz kilka procesów
+    (okno Codo, `codo host`, `codo work --bg`, REPL): do 0.28.0 plik był najpierw obcinany, czytelnik
+    trafiał na pusty, dostawał {} i jego zapis kasował wszystko (dostawca, model, zaufane foldery)."""
+    import tempfile
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        SETTINGS_FILE.write_text(json.dumps(settings, indent=1, ensure_ascii=False),
-                                 encoding="utf-8")
+        fd, tmp = tempfile.mkstemp(prefix=".settings.", suffix=".tmp", dir=str(CONFIG_DIR))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(json.dumps(settings, indent=1, ensure_ascii=False))
+                f.flush()
+                os.fsync(f.fileno())
+            for attempt in range(5):
+                try:
+                    os.replace(tmp, SETTINGS_FILE)
+                    break
+                except PermissionError:
+                    # Windows: inny proces Codo akurat czyta plik
+                    if not IS_WIN or attempt == 4:
+                        raise
+                    import time
+                    time.sleep(0.05 * (attempt + 1))
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass  # nosec B110
+            raise
     except OSError:
         pass  # nosec B110 — ustawienia są wygodą, nie warunkiem działania
 
@@ -763,10 +793,17 @@ def update_hint(force: bool = False) -> str | None:
         try:
             info = _http("GET", "/cli/info", timeout=4, retries=0)
             latest = info.get("version")
-            st.update(latest_version=latest, version_checked_at=_time.time())
-            save_settings(st)
         except Exception:
+            # Bez sieci: następna próba za godzinę, nie przy każdym starcie (do 0.28.0 każde
+            # uruchomienie offline czekało do 4 s na DNS i limit czasu).
+            if not force:
+                cur = load_settings()
+                cur["version_checked_at"] = _time.time() - 86400 + 3600
+                save_settings(cur)
             return None
+        cur = load_settings()   # świeży odczyt: nie nadpisujemy zmian innych procesów
+        cur.update(latest_version=latest, version_checked_at=_time.time())
+        save_settings(cur)
     if latest and _ver_tuple(latest) > _ver_tuple(VERSION):
         return latest
     return None
@@ -1122,6 +1159,20 @@ class _Editor:
         return out, cur_row - top, cur_col + 2
 
 
+
+_FOOTER_MODEL = {"at": 0.0, "value": ""}
+
+
+def _footer_model() -> str:
+    """Model do stopki, odświeżany najwyżej co 2 s: stopka rysuje się kilka razy na sekundę, a
+    current_model czyta za każdym razem kilka plików konfiguracji (do 0.28.0: 7 odczytów na klatkę)."""
+    import time
+    now = time.monotonic()
+    if now - _FOOTER_MODEL["at"] > 2:
+        _FOOTER_MODEL["value"] = str(current_model(None) or "")
+        _FOOTER_MODEL["at"] = now
+    return _FOOTER_MODEL["value"]
+
 class _LiveOut:
     """sys.stdout podczas pracy: wszystko, co wypisze program, trafia nad panel."""
 
@@ -1296,7 +1347,7 @@ class _Live:
             left = cyan(_L("  ⏸ tryb tylko odczyt"))
         else:
             left = dim(_L("  ⏵ pyta o zgodę"))
-        model = str(SESSION.get("model") or current_model(None) or "")
+        model = str(SESSION.get("model") or _footer_model() or "")
         tail = [dim(_L("esc przerywa"))] if self.busy and self.interactive else []
         eff = current_effort()
         if eff != "medium" or _marathon_on():
@@ -2300,7 +2351,7 @@ class _AnswerStream:
 # ── Credentials ─────────────────────────────────────────────────────────────
 def load_creds() -> dict | None:
     try:
-        data = json.loads(CRED_FILE.read_text())
+        data = json.loads(CRED_FILE.read_text(encoding="utf-8"))
         return data if isinstance(data, dict) and data.get("access_token") and data.get("refresh_token") else None
     except (OSError, ValueError):
         return None
@@ -2309,7 +2360,7 @@ def load_creds() -> dict | None:
 # ── Urządzenie (parowanie kodem — bez hasła na tej maszynie) ────────────────
 def load_device() -> dict | None:
     try:
-        d = json.loads(DEVICE_FILE.read_text())
+        d = json.loads(DEVICE_FILE.read_text(encoding="utf-8"))
         if not isinstance(d, dict) or not d.get("device_id") or not d.get("device_secret"):
             return None
         if d.get("api_url", API_URL) != API_URL:
@@ -2442,7 +2493,7 @@ LINKS_FILE = CONFIG_DIR / "links.json"
 
 def _links_load() -> dict:
     try:
-        return json.loads(LINKS_FILE.read_text())
+        return json.loads(LINKS_FILE.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
@@ -2507,10 +2558,15 @@ def _win_pythonw() -> str:
     return str(w) if w.exists() else str(exe)
 
 
-def _pid_alive(pid: int) -> bool:
+def _pid_alive(pid) -> bool:
     """Czy proces żyje. UWAGA Windows: os.kill(pid, 0) NIE sonduje — wywołuje
     TerminateProcess i ZABIJA proces. Dlatego na Windows sondujemy przez
-    OpenProcess+GetExitCodeProcess (STILL_ACTIVE=259)."""
+    OpenProcess+GetExitCodeProcess (STILL_ACTIVE=259). Jedna definicja: druga, niżej
+    w pliku (tasklist z limitem 10 s), po cichu podmieniała tę aż do 0.28.0."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
     if pid <= 0:
         return False
     if IS_WIN:
@@ -2530,6 +2586,8 @@ def _pid_alive(pid: int) -> bool:
     try:
         os.kill(pid, 0)
         return True
+    except PermissionError:
+        return True  # żyje, tylko należy do innego użytkownika
     except OSError:
         return False
 
@@ -2842,7 +2900,7 @@ FIRMA_FILE = CONFIG_DIR / "firma.json"
 
 def load_firma() -> dict | None:
     try:
-        d = json.loads(FIRMA_FILE.read_text())
+        d = json.loads(FIRMA_FILE.read_text(encoding="utf-8"))
         return d if isinstance(d, dict) and str(d.get("klucz") or "").startswith("dfk_") else None
     except (OSError, ValueError):
         return None
@@ -2916,7 +2974,7 @@ def cmd_firma(arg: str = "") -> int:
 
 def load_maddlabs() -> dict | None:
     try:
-        d = json.loads(MADDLABS_FILE.read_text())
+        d = json.loads(MADDLABS_FILE.read_text(encoding="utf-8"))
         return d if isinstance(d, dict) and str(d.get("api_key") or "").strip() else None
     except (OSError, ValueError):
         return None
@@ -3125,18 +3183,50 @@ def _sse_chat(resp) -> dict:
 _NO_STREAM: set = set()
 
 
+_RETRY_STEP = (429, 500, 502, 503, 504, 529)
+
+
+def _with_retry(call, payload: dict) -> dict:
+    """Przeciążenie dostawcy (429/5xx/529) albo zerwane połączenie: do 4 prób z odstępem z Retry-After
+    albo rosnącym (z losowym rozrzutem), najwyżej 60 s. Do 0.28.0 jedno 429 od OpenAI czy Anthropic
+    kończyło turę."""
+    import random
+    import time
+    for attempt in range(5):
+        try:
+            return call(payload)
+        except ApiError as e:
+            if e.status not in _RETRY_STEP or attempt == 4:
+                raise
+            try:
+                wait = float((e.payload or {}).get("_retry_after") or 0)
+            except (TypeError, ValueError):
+                wait = 0
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", None)
+            # nieuruchomiony serwer lokalny (Ollama) i zły certyfikat: od razu, bez 30 s czekania
+            if attempt == 4 or isinstance(reason, ConnectionRefusedError) or "CERTIFICATE_VERIFY_FAILED" in str(reason):
+                raise
+            wait = 0
+        wait = min(60.0, wait or (2 ** attempt * 2 + random.uniform(0, 1.5)))  # nosec B311 — rozrzut, nie kryptografia
+        LIVE.status(_Lf("Dostawca przeciążony, ponawiam za {0} s", int(wait)))
+        time.sleep(wait)
+    return call(payload)
+
+
 def _chat_live(call, payload: dict, where: str) -> dict:
     """W aplikacji krok z narzędziami idzie strumieniem (treść pliku widać w trakcie pisania).
     Serwer, który strumienia nie obsłuży, dostaje to samo żądanie zwyczajnie i jest zapamiętany."""
     if _APP["out"] is None or not payload.get("tools") or where in _NO_STREAM or os.environ.get("CODO_NO_STREAM"):
-        return call(payload)
+        return _with_retry(call, payload)
     try:
-        return call({**payload, "stream": True})
+        return _with_retry(call, {**payload, "stream": True})
     except ApiError as e:
-        if e.status not in (400, 404, 405, 415, 422, 501, 502):
+        # 502 to zwykle chwilowa awaria, nie brak strumienia (do 0.28.0 jedno 502 wyłączało go na zawsze)
+        if e.status not in (400, 404, 405, 415, 422, 501):
             raise
         _NO_STREAM.add(where)
-        return call(payload)
+        return _with_retry(call, payload)
 
 
 def _maddlabs_http(method: str, path: str, *, key: str | None = None, json_body: dict | None = None,
@@ -3175,7 +3265,11 @@ def _maddlabs_http(method: str, path: str, *, key: str | None = None, json_body:
             detail = _L("Klucz MaddLabs jest nieważny albo wycofany. Zaloguj się ponownie: /login")
         elif e.code == 402:
             detail = _L("Brak środków na koncie MaddLabs. Doładuj saldo na maddlabs.co.")
-        raise ApiError(e.code, detail, payload if isinstance(payload, dict) else {}) from None
+        info = payload if isinstance(payload, dict) else {}
+        ra = e.headers.get("Retry-After") if e.headers else None
+        if ra:
+            info = {**info, "_retry_after": ra}
+        raise ApiError(e.code, detail, info) from None
 
 
 def _maddlabs_base(ml: dict) -> str:
@@ -3286,13 +3380,14 @@ def maddlabs_step(body: dict) -> dict:
                                                base=_maddlabs_base(ml)), payload, "maddlabs")
     try:
         message = data["choices"][0]["message"]
-    except (KeyError, IndexError, TypeError):
+        finish = data["choices"][0].get("finish_reason") or ""
+    except (KeyError, IndexError, TypeError, AttributeError):
         raise ApiError(502, _L("Nieprawidłowa odpowiedź modelu MaddLabs.")) from None
     thought = _take_reasoning(message)
     message = {k: v for k, v in message.items() if k in ("role", "content", "tool_calls") and v is not None}
     message.setdefault("role", "assistant")
     return {"message": message, "model": data.get("model") or model, "credits_spent": 0,
-            "usage": data.get("usage") or {}, "thinking": thought}
+            "usage": data.get("usage") or {}, "thinking": thought, "finish_reason": finish}
 
 
 def _take_reasoning(message: dict) -> str:
@@ -3361,7 +3456,7 @@ _ENDPOINT_MODELS_CACHE: dict = {}
 
 def _endpoints_load() -> dict:
     try:
-        d = json.loads(ENDPOINTS_FILE.read_text())
+        d = json.loads(ENDPOINTS_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"konta": {}, "aktywne": None}
     if not isinstance(d, dict) or not isinstance(d.get("konta"), dict):
@@ -3533,7 +3628,8 @@ def endpoint_step(body: dict) -> dict:
             raise
     try:
         message = data["choices"][0]["message"]
-    except (KeyError, IndexError, TypeError):
+        finish = data["choices"][0].get("finish_reason") or ""
+    except (KeyError, IndexError, TypeError, AttributeError):
         raise ApiError(502, _Lf('Nieprawidłowa odpowiedź od {0}.', _endpoint_name(ep))) from None
     thought = _take_reasoning(message)
     message = {k: v for k, v in message.items() if k in ("role", "content", "tool_calls") and v is not None}
@@ -3546,7 +3642,7 @@ def endpoint_step(body: dict) -> dict:
             fn["arguments"] = json.dumps(fn["arguments"], ensure_ascii=False)
         tc.setdefault("type", "function")
     return {"message": message, "model": f"@{ep['id']}/{data.get('model') or model}", "credits_spent": 0,
-            "usage": data.get("usage") or {}, "thinking": thought}
+            "usage": data.get("usage") or {}, "thinking": thought, "finish_reason": finish}
 
 
 def _endpoint_new_id(base_id: str) -> str:
@@ -3955,10 +4051,12 @@ TOOLS = [
     {"type": "function", "function": {
         "name": "edit_file",
         "description": ("Podmień DOKŁADNIE jedno wystąpienie old_string na "
-                        "new_string. dry_run=true → podgląd diffa bez zapisu."),
+                        "new_string (replace_all=true: wszystkie, np. zmiana nazwy). "
+                        "dry_run=true → podgląd diffa bez zapisu."),
         "parameters": {"type": "object", "properties": {
             "path": {"type": "string"}, "old_string": {"type": "string"},
             "new_string": {"type": "string"},
+            "replace_all": {"type": "boolean", "description": "podmień każde wystąpienie"},
             "dry_run": {"type": "boolean"},
         }, "required": ["path", "old_string", "new_string"]}}},
     {"type": "function", "function": {
@@ -4209,7 +4307,7 @@ TOOLS = [
 # Zgoda z rozmowy dotyczy konkretnego wywołania, nie całej sesji.
 # Cytat musi pochodzić z wiadomości użytkownika, a nie z odpowiedzi modelu.
 for _tool in TOOLS:
-    if _tool["function"]["name"] in ("install", "run_command"):
+    if _tool["function"]["name"] == "install":
         _tool["function"]["parameters"]["properties"]["user_authorization"] = {
             "type": "string",
             "description": ("Dokładny cytat z wiadomości użytkownika, który wprost zleca "
@@ -4218,12 +4316,36 @@ for _tool in TOOLS:
 
 
 def _authorized_install_call(name: str, args: dict, messages: list) -> bool:
-    if name not in ("install", "run_command"):
+    """Instalacja bez pytania tylko wtedy, gdy użytkownik sam o nią poprosił w ostatniej wiadomości
+    i wymienił każdą paczkę. Do 0.28.0 obejmowało też run_command i wystarczał dowolny 8-znakowy
+    fragment wiadomości: „zainstaluj requests” przepuszczał run_command z dowolną komendą."""
+    if name != "install" or SESSION.get("marathon"):
         return False
     quote = args.get("user_authorization")
-    latest = next((str(m.get("content") or "") for m in reversed(messages)
-                   if m.get("role") == "user"), "")
-    return isinstance(quote, str) and len(quote.strip()) >= 8 and quote in latest
+    latest = next((m.get("content") for m in reversed(messages) if m.get("role") == "user"), "")
+    if not isinstance(latest, str) or not isinstance(quote, str) or len(quote.strip()) < 8:
+        return False
+    typed = latest.split("<polecenie_uzytkownika>")[0].split("\n\nDołączone przez użytkownika (@):")[0]
+    if quote not in typed or not re.search(r"instal|install|dodaj|add\b|pip|npm", quote, re.I):
+        return False
+    packages = args.get("packages") or []
+    if isinstance(packages, str):
+        packages = [packages]
+    low = typed.casefold()
+    for p in packages:
+        spec = str(p).strip()
+        # adresy, flagi i spacje (np. „requests @ https://…”, „--index-url”) zawsze pytają
+        if not spec or re.search(r"\s|://|^-", spec):
+            return False
+        name = re.split(r"[=<>~!;\[]", spec, maxsplit=1)[0]
+        if "@" in name[1:]:
+            name = name[:name.index("@", 1)]   # npm: pakiet@wersja, także @zakres/pakiet@wersja
+        name = name.casefold()
+        if not re.search(r"[a-z0-9]", name):
+            return False
+        if not re.search(r"(?<![\w@/-])" + re.escape(name) + r"(?![\w-])", low):
+            return False
+    return True
 
 
 TOOLS.append({"type": "function", "function": {
@@ -4303,7 +4425,7 @@ def skills_list() -> list:
     off = set(load_settings().get("skills_off") or [])
     for pack in sorted(SKILLS_DIR.iterdir()):
         try:
-            info = json.loads((pack / "codo-skill.json").read_text())
+            info = json.loads((pack / "codo-skill.json").read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         for sk in info.get("skills") or []:
@@ -4821,7 +4943,10 @@ def cmd_skills(arg: str = "") -> int:
 CONFIRM_TOOLS = ("run_command", "install", "run_app", "run_tests", "format",
                  "run_code", "open_app", "app_use")
 
-_SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".doma"}
+_SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".doma",
+              # katalogi budowania i pamięci podręcznych innych ekosystemów (Rust, Next/Nuxt, iOS, Gradle…)
+              "target", ".next", ".nuxt", "Pods", ".gradle", "coverage", ".cache", ".turbo",
+              ".mypy_cache", ".pytest_cache", ".ruff_cache", ".svelte-kit", "DerivedData"}
 
 # Katalog roboczy doma na maszynie usera: auto-kopie plików + stan podglądu.
 _DOMA_DIR = ".doma"
@@ -4832,6 +4957,8 @@ def _safe_path(p: str) -> Path:
     """Ścieżki względne do cwd; absolutne dozwolone tylko wewnątrz cwd
     (agent zarządza TĄ stroną, nie całym systemem)."""
     base = Path.cwd().resolve()
+    if str(p).startswith("~"):
+        p = os.path.expanduser(p)   # do 0.28.0 „~/x” tworzyło w projekcie folder o nazwie „~”
     target = (base / p).resolve() if not os.path.isabs(p) else Path(p).resolve()
     if base not in target.parents and target != base:
         raise ValueError(_Lf('Ścieżka poza katalogiem roboczym: {0} (uruchom codo w katalogu strony)', p))
@@ -4872,9 +4999,19 @@ _PANEL_EXTRA_ROOTS = ("/var/www", "/srv", "/srv/www", "/usr/share/nginx/html")
 _PAGE_SUFFIXES = (".html", ".htm")
 
 
+# Szerokie rooty (HOME, web-rooty) tylko w mostku `codo serve` dla panelu WebStudio. W zwykłej
+# sesji narzędzia panelu sięgają wyłącznie do folderu projektu (do 0.28.0 write_text z modelu
+# mógł nadpisać dowolny plik .py/.sh/.json w katalogu domowym, z pominięciem kopii i cofania).
+_SERVE = {"on": False}
+# Narzędzia panelu: model w zwykłej sesji ich nie widzi (ma read_file/write_file/edit_file);
+# serwer (Lopus, panel) nadal może je wywołać przez mostek, ale w granicach projektu.
+_PANEL_TOOLS = {"read_raw", "write_page", "scan_sites", "list_files", "read_text", "fetch_page",
+                "smart_preview", "upload_image", "write_text"}
+
+
 def _safe_roots() -> list[Path]:
     roots: list[Path] = []
-    cands = [Path.cwd(), Path.home()] + [Path(x) for x in _PANEL_EXTRA_ROOTS]
+    cands = [Path.cwd()] + ([Path.home()] + [Path(x) for x in _PANEL_EXTRA_ROOTS] if _SERVE["on"] else [])
     seen: set[Path] = set()
     for p in cands:
         try:
@@ -5038,7 +5175,7 @@ def t_read_text(args):
     try:
         if path.stat().st_size > _MAX_EDIT_BYTES:
             return f"BŁĄD: plik za duży do edycji (>{_MAX_EDIT_BYTES // 1000}k bajtów)."
-        return path.read_text(encoding="utf-8", errors="replace")
+        return _read_text_keep(path)
     except Exception as e:
         return f"BŁĄD odczytu: {e}"
 
@@ -5052,17 +5189,25 @@ def t_write_text(args):
     new = args.get("content") or ""
     if len(new.encode("utf-8", "replace")) > _MAX_EDIT_BYTES:
         return f"BŁĄD: treść za duża (>{_MAX_EDIT_BYTES // 1000}k bajtów)."
-    old = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
-    if old == new:
-        return "write_text: brak zmian (treść identyczna)."
-    _panel_backup(path)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(new, encoding="utf-8")
-    except Exception as e:
-        return f"BŁĄD zapisu: {e}"
-    a, r = _linedelta(old, new)
-    return f"write_text → {path} (+{a}/-{r} linii, kopia zapasowa zrobiona)"
+        old = _read_text_keep(path, missing_ok=True)
+    except OSError as e:
+        return f"BŁĄD odczytu: {e}"
+    if old == new.replace("\r\n", "\n"):
+        return "write_text: brak zmian (treść identyczna)."
+    inside = Path.cwd().resolve() in path.parents
+    if not inside:
+        _panel_backup(path)   # poza projektem (tylko `codo serve`): kopia obok pliku
+        try:
+            enc, crlf, bom = _FILE_FMT.get(path) or ("utf-8", False, False)
+            out = new.replace("\r\n", "\n")
+            _atomic_write(path, (_UTF8_BOM if bom else b"") + (out.replace("\n", "\r\n") if crlf else out).encode(enc))
+        except Exception as e:
+            return f"BŁĄD zapisu: {e}"
+        a, r = _linedelta(old, new)
+        return f"write_text → {path} (+{a}/-{r} linii, kopia zapasowa zrobiona)"
+    # w projekcie: ta sama droga co edit_file (kopia w .doma/backups, cofanie, dziennik zmian)
+    return _apply(path, old, new.replace("\r\n", "\n"), {}, "write_text")
 
 
 # ── Panel: podgląd żywej strony (dla dynamicznych: Flask/Jinja/PHP itd.) ────
@@ -5267,6 +5412,7 @@ def _backup(path: Path) -> Path | None:
     rel = path.relative_to(Path.cwd())
     dest_dir = Path.cwd() / _BACKUP_DIR / rel.parent
     dest_dir.mkdir(parents=True, exist_ok=True)
+    _doma_ignored()
     ts = _time.strftime("%Y%m%d-%H%M%S")
     bak = dest_dir / f"{rel.name}.{ts}.bak"
     i = 1
@@ -5274,7 +5420,28 @@ def _backup(path: Path) -> Path | None:
         bak = dest_dir / f"{rel.name}.{ts}-{i}.bak"
         i += 1
     shutil.copy2(path, bak)
+    try:
+        _, olds = _backups_for(path)
+        for old in olds[:-_BACKUPS_KEEP]:   # najstarsze ponad limit (do 0.28.0 kopie rosły bez końca)
+            Path(old).unlink(missing_ok=True)
+    except (OSError, ValueError, TypeError, IndexError):
+        pass  # nosec B110 — porządki nie mogą blokować edycji
     return bak
+
+
+_BACKUPS_KEEP = 20
+
+
+def _doma_ignored() -> None:
+    """.doma/.gitignore z „*”: kopie, logi procesów i kosz (np. usunięty .env) nigdy nie trafią do commita
+    po `git add -A` (do 0.28.0 wykluczenie dopisywał tylko zespół agentów)."""
+    f = Path.cwd() / _DOMA_DIR / ".gitignore"
+    if not f.exists():
+        try:
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_text("# Codo: kopie zapasowe, logi i kosz; nie do repozytorium\n*\n", encoding="utf-8")
+        except OSError:
+            pass  # nosec B110
 
 
 def _git_head_text(path: Path) -> str | None:
@@ -5352,6 +5519,35 @@ def _read_text_keep(path: Path, missing_ok: bool = False) -> str:
     return text
 
 
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Zapis przez plik tymczasowy w tym samym folderze i os.replace: brak miejsca albo przerwanie
+    w połowie nie zostawia uciętego pliku. Uprawnienia istniejącego pliku zostają; dowiązanie
+    symboliczne zostaje dowiązaniem (zapis idzie do pliku, na który wskazuje)."""
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    real = path.resolve() if path.is_symlink() else path
+    mode = None
+    try:
+        mode = real.stat().st_mode & 0o7777
+    except OSError:
+        pass  # nosec B110 — nowy plik
+    fd, tmp = tempfile.mkstemp(prefix="." + real.name + ".", suffix=".codo-tmp", dir=str(real.parent))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, real)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass  # nosec B110
+        raise
+
+
 def _apply(path: Path, old: str, new: str, args: dict, label: str) -> str:
     """Zapis LUB podgląd (dry_run). Przed każdym realnym zapisem robi kopię
     pliku (restore-owalną). Agent może najpierw zobaczyć diff (dry_run)."""
@@ -5368,8 +5564,10 @@ def _apply(path: Path, old: str, new: str, args: dict, label: str) -> str:
                 "Nic nie zapisano. Użyj znaków z tego kodowania albo za zgodą użytkownika "
                 "przekonwertuj plik na UTF-8 (run_command: iconv).")
     _backup(path)  # auto-kopia PRZED nadpisaniem (bezpieczne cofnięcie)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes((_UTF8_BOM if bom else b"") + data)
+    try:
+        _atomic_write(path, (_UTF8_BOM if bom else b"") + data)
+    except OSError as e:
+        return f"BŁĄD zapisu {path.name}: {e}. Plik został bez zmian."
     a, r = _linedelta(old, new)
     with _EDIT_LOCK:
         _EDIT_SEQ[0] += 1
@@ -5434,9 +5632,13 @@ def t_restore(args):
         src = chosen[-1]
     else:
         src = baks[-1]
+    data = src.read_bytes()   # przed _backup: przycinanie starych kopii mogłoby usunąć właśnie tę
     _backup(path)  # bieżący stan też zachowujemy (restore jest odwracalny)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, path)
+    _atomic_write(path, data)
+    try:
+        shutil.copystat(src, path)
+    except OSError:
+        pass  # nosec B110 — czas i uprawnienia to dodatek
     return f"Przywrócono {rel} z kopii {src.name}"
 
 
@@ -5470,7 +5672,7 @@ def t_check(args):
         rel = f.relative_to(Path.cwd())
         try:
             if suf == ".json":
-                _json.loads(f.read_text()); checked += 1
+                _json.loads(f.read_text(encoding="utf-8")); checked += 1
             elif suf == ".py":
                 compile(f.read_text(), str(f), "exec"); checked += 1
             elif suf in (".js", ".mjs", ".cjs"):
@@ -5579,7 +5781,7 @@ def t_run_tests(args, auto_yes=False):
         desc = "pytest -q" + (f" -k {filt}" if filt else "")
     elif (cwd / "package.json").exists():
         try:
-            pkg = json.loads((cwd / "package.json").read_text())
+            pkg = json.loads((cwd / "package.json").read_text(encoding="utf-8"))
         except Exception:
             pkg = {}
         if (pkg.get("scripts") or {}).get("test"):
@@ -5881,13 +6083,44 @@ def t_write_file(args):
 def t_edit_file(args):
     path = _safe_path(args["path"])
     text = _read_text_keep(path)
-    old = args["old_string"]
+    old, new = args["old_string"], args["new_string"]
+    if not old:
+        return ("BŁĄD: pusty old_string. Do dopisania na końcu albo w miejscu użyj insert_lines, "
+                "do nowego pliku write_file.")
     n = text.count(old)
+    if n == 0 and "\r\n" in text and "\n" in old:
+        # Plik z mieszanymi końcami linii: read_file ich nie pokazuje, więc model podaje same \n.
+        crlf_old = old.replace("\r\n", "\n").replace("\n", "\r\n")
+        if text.count(crlf_old):
+            old, new = crlf_old, new.replace("\r\n", "\n").replace("\n", "\r\n")
+            n = text.count(old)
     if n == 0:
-        return "BŁĄD: old_string nie znaleziony w pliku."
-    if n > 1:
-        return f"BŁĄD: old_string występuje {n}× — podaj dłuższy, unikalny fragment."
-    return _apply(path, text, text.replace(old, args["new_string"], 1), args, "edit_file")
+        return "BŁĄD: old_string nie znaleziony w pliku." + _near_miss(text, old)
+    if n > 1 and not args.get("replace_all"):
+        return (f"BŁĄD: old_string występuje {n}× — podaj dłuższy, unikalny fragment "
+                "albo replace_all=true, jeśli zmiana ma objąć wszystkie.")
+    out = text.replace(old, new) if args.get("replace_all") else text.replace(old, new, 1)
+    return _apply(path, text, out, args, "edit_file" + (f" ({n}×)" if n > 1 else ""))
+
+
+def _near_miss(text: str, old: str) -> str:
+    """Podpowiedź, gdy old_string nie pasuje: najczęściej inne wcięcia albo spacje na końcu linii."""
+    squash = lambda t: re.sub(r"[ \t]+", " ", t.replace("\r\n", "\n")).strip()  # noqa: E731
+    want = squash(old)
+    if not want:
+        return ""
+    lines = text.split("\n")
+    first = squash(old.split("\n", 1)[0])
+    if not first:
+        return ""
+    for i, line in enumerate(lines):
+        if squash(line) == first:
+            n = old.count("\n") + 1
+            if squash("\n".join(lines[i:i + n])) == want:
+                return (f" Prawie identyczny fragment jest w liniach {i + 1}-{i + n}: różni się tylko "
+                        "spacjami albo wcięciem. Przeczytaj te linie (read_file offset) i skopiuj je dokładnie.")
+            return f" Pierwsza linia pasuje do linii {i + 1}, dalsze nie: przeczytaj plik od tego miejsca."
+    return " Przeczytaj plik jeszcze raz (mógł się zmienić) i skopiuj fragment dokładnie."
 
 
 def _human_size(n: int) -> str:
@@ -5935,15 +6168,28 @@ def _read_one(p: str, offset: int, limit: int) -> str:
         return f"BŁĄD: {p} to katalog — użyj list_dir albo find_files."
     if _is_binary(path):
         return _Lf('(plik binarny {0}, {1} — nie czytam treści)', p, _human_size(path.stat().st_size))
-    lines = _decode_text(path.read_bytes())[0].splitlines()
-    off = max(1, offset)
-    chunk = lines[off - 1: off - 1 + limit]
-    body = "\n".join(f"{i + off}\t{(l if len(l) <= 2000 else l[:2000] + ' …')}" for i, l in enumerate(chunk))
+    text = _decode_text(path.read_bytes())[0]
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()   # końcowy \n nie jest osobną linią (tak liczy grep i edytor)
     if not lines:
         return _Lf('(pusty plik {0})', p)
-    end = off - 1 + len(chunk)
+    off = max(1, offset)
+    if off > len(lines):
+        return f"(plik {p} ma {len(lines)} linii, offset={off} jest za końcem; czytaj od offset=1)"
+    # Budżet znaków: stopka „dalej: offset=…” musi zmieścić się w wyniku (do 0.28.0 przy długich
+    # liniach obcinał ją limit wyniku i model nie wiedział, gdzie czytać dalej).
+    rows, used = [], 0
+    for i, l in enumerate(lines[off - 1: off - 1 + limit]):
+        l = l[:-1] if l.endswith("\r") else l
+        row = f"{i + off}\t{(l if len(l) <= 2000 else l[:2000] + ' …')}"
+        if rows and used + len(row) > MAX_TOOL_RESULT_CHARS - 400:
+            break
+        rows.append(row)
+        used += len(row) + 1
+    end = off - 1 + len(rows)
     more = f"\n… (linie {off}-{end} z {len(lines)}; dalej: offset={end + 1})" if len(lines) > end else ""
-    return body + more
+    return "\n".join(rows) + more
 
 
 def t_read_file(args):
@@ -6003,31 +6249,43 @@ def t_list_dir(args):
 def t_find_files(args):
     """Pliki po wzorcu (glob), najnowsze pierwsze. Pomija katalogi zależności i budowania."""
     import fnmatch
+    import time as _time
     pattern = (args.get("pattern") or "*").strip()
-    root = _safe_path(args.get("path") or ".")
+    root = _safe_read_path(args.get("path") or ".")
     limit = max(1, min(500, int(args.get("limit") or 200)))
     pat = pattern[3:] if pattern.startswith("**/") else pattern
     # fnmatch nie zna „**”: src/**/*.ts ma łapać także pliki wprost w src/.
     flat = pattern.replace("/**/", "/")
     found = []
+    visited, cut = 0, ""
+    deadline = _time.monotonic() + 30
     for directory, dirs, files in os.walk(root, followlinks=False):
         dirs[:] = [d for d in dirs if d not in _SKIP_DIRS and d != ".doma"]
+        visited += len(files)
+        if visited > 200_000 or _time.monotonic() > deadline:
+            cut = f"\n… (przeszukiwanie przerwane po {visited} plikach: podaj węższy path)"
+            break
         for name in files:
             f = Path(directory) / name
             rel = str(f.relative_to(root)).replace("\\", "/")
             if (fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(name, pat) or fnmatch.fnmatch(rel, pat)
                     or (flat != pattern and fnmatch.fnmatch(rel, flat))):
                 try:
-                    found.append((f.stat().st_mtime, str(f.relative_to(Path.cwd()))))
+                    try:
+                        shown = str(f.relative_to(Path.cwd()))
+                    except ValueError:
+                        shown = str(f)
+                    found.append((f.stat().st_mtime, shown))
                 except OSError:
                     continue
         if len(found) > 20000:
+            cut = "\n… (ponad 20 000 pasujących plików: zawęź wzorzec)"
             break
     if not found:
-        return f"(brak plików pasujących do {pattern})"
+        return f"(brak plików pasujących do {pattern})" + cut
     found.sort(reverse=True)
     out = [p for _, p in found[:limit]]
-    return "\n".join(out) + (f"\n… ({len(found)} plików, pokazano {limit} najnowszych)" if len(found) > limit else "")
+    return "\n".join(out) + (f"\n… ({len(found)} plików, pokazano {limit} najnowszych)" if len(found) > limit else "") + cut
 
 
 def t_grep(args):
@@ -6053,22 +6311,36 @@ def t_grep(args):
             cmd += ["-C", str(context)]
         if glob:
             cmd += ["-g", glob]
+        # Ukryte pliki też (.github/, .eslintrc, .env.example), .gitignore także poza repozytorium git;
+        # bez plików z sekretami (.env, .env.local), żeby ich treść nie trafiała do modelu.
+        cmd += ["--hidden", "--no-require-git", "-g", "!.env", "-g", "!.env.*"]
         for d in _SKIP_DIRS:
             cmd += ["-g", f"!{d}/"]
         cmd += ["-e", pattern, str(root)]
+
+        def shown(out: str, note: str = "") -> str:
+            lines = []
+            cwd = str(Path.cwd()) + os.sep
+            for line in out.splitlines():
+                lines.append(line[len(cwd):] if line.startswith(cwd) else line)
+                if len(lines) >= limit:
+                    lines.append(f"… (obcięte do {limit} wierszy — zawęź wzorzec, path albo glob)")
+                    break
+            return ("\n".join(lines) or "(brak trafień)") + note
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",  # nosec B603
                                   errors="replace", timeout=60, cwd=str(Path.cwd()))
             if proc.returncode in (0, 1):
-                lines = []
-                cwd = str(Path.cwd()) + os.sep
-                for line in proc.stdout.splitlines():
-                    lines.append(line[len(cwd):] if line.startswith(cwd) else line)
-                    if len(lines) >= limit:
-                        lines.append(f"… (obcięte do {limit} wierszy — zawęź wzorzec, path albo glob)")
-                        break
-                return "\n".join(lines) or "(brak trafień)"
-        except (OSError, subprocess.TimeoutExpired):
+                return shown(proc.stdout)
+            if proc.returncode == 2 and proc.stdout.strip():
+                # kod 2 = jakiś błąd po drodze (np. jeden plik bez prawa odczytu), ale trafienia są dobre
+                return shown(proc.stdout)
+            if proc.returncode == 2 and "regex parse error" in (proc.stderr or ""):
+                return "BŁĄD: niepoprawne wyrażenie regularne:\n" + proc.stderr.strip()[:600]
+        except subprocess.TimeoutExpired as e:
+            part = e.stdout.decode("utf-8", "replace") if isinstance(e.stdout, bytes) else (e.stdout or "")
+            return shown(part, "\n… (szukanie przerwane po 60 s: zawęź path albo glob)")
+        except OSError:
             pass  # spadamy do wersji w Pythonie
     try:
         regex = re.compile(pattern, re.I if ignore_case else 0)
@@ -6077,13 +6349,21 @@ def t_grep(args):
     hits: list = []
     files_hit: list = []
 
+    import time as _time
+    deadline = _time.monotonic() + 45
+    seen = [0]
+
     def search_file(f: Path) -> None:
+        seen[0] += 1
         try:
-            if f.stat().st_size > 2_000_000 or _is_binary(f):
+            if f.stat().st_size > 2_000_000 or _is_binary(f) or re.match(r"\.env($|\.)", f.name) and f.name not in (".env.example", ".env.sample"):
                 return
-            rel = str(f.relative_to(Path.cwd()))
-            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
-        except (OSError, ValueError):
+            try:
+                rel = str(f.relative_to(Path.cwd()))
+            except ValueError:
+                rel = str(f)   # kopia innego członka zespołu poza tym folderem
+            lines = f.read_text(encoding="utf-8", errors="replace").split("\n")
+        except OSError:
             return
         for i, line in enumerate(lines, 1):
             if regex.search(line):
@@ -6097,7 +6377,7 @@ def t_grep(args):
                         hits.append(f"{rel}{sep}{j}{sep} {lines[j - 1][:300]}")
                     hits.append("--")
                 else:
-                    hits.append(f"{rel}:{i}: {line.strip()[:300]}")
+                    hits.append(f"{rel}:{i}:{line.rstrip(chr(13))[:300]}")   # ten sam format co ripgrep
                 if len(hits) >= limit:
                     return
 
@@ -6113,8 +6393,12 @@ def t_grep(args):
                 if glob and not (fnmatch.fnmatch(name, glob) or fnmatch.fnmatch(str(f.relative_to(root)), glob)):
                     continue
                 search_file(f)
-                if len(hits) >= limit:
-                    return "\n".join(hits) + f"\n… (obcięte do {limit} trafień)"
+                if len(hits) >= limit or len(files_hit) >= limit:
+                    return "\n".join(hits or files_hit) + f"\n… (obcięte do {limit} trafień)"
+                if seen[0] > 60_000 or _time.monotonic() > deadline:
+                    return ("\n".join(hits or files_hit) or "(brak trafień)") + (
+                        f"\n… (przeszukano {seen[0]} plików i przerwano: zawęź path albo glob; "
+                        "zainstaluj ripgrep (rg), szuka wielokrotnie szybciej)")
     if files_only:
         return "\n".join(files_hit) or "(brak trafień)"
     return "\n".join(hits) or "(brak trafień)"
@@ -6131,7 +6415,13 @@ def t_file_op(args, auto_yes=False):
         target.mkdir(parents=True, exist_ok=True)
         return f"Utworzono katalog {src}"
     source = _safe_path(src)
-    if not source.exists():
+    # Dowiązanie symboliczne: przenosimy/usuwamy samo dowiązanie, nie plik, na który wskazuje
+    # (do 0.28.0 „delete link” wynosiło do kosza prawdziwy plik i zostawiało martwe dowiązanie).
+    unresolved = Path(os.path.abspath(Path.cwd() / src if not os.path.isabs(src) else src))
+    if unresolved.is_symlink() and action in ("move", "delete"):
+        _safe_path(str(unresolved.parent))   # katalog dowiązania musi leżeć w projekcie
+        source = unresolved
+    if not source.exists() and not source.is_symlink():
         hint = _similar_paths(src)
         return f"BŁĄD: nie ma {src}" + (f". Może: {', '.join(hint)}" if hint else "")
     if source == Path.cwd().resolve():
@@ -6163,6 +6453,7 @@ def t_file_op(args, auto_yes=False):
         import time as _time
         trash = Path.cwd() / _DOMA_DIR / "trash" / _time.strftime("%Y%m%d-%H%M%S")
         trash.mkdir(parents=True, exist_ok=True)
+        _doma_ignored()
         shutil.move(str(source), str(trash / source.name))
         return f"Usunięto {src} (kopia: {(trash / source.name).relative_to(Path.cwd())})"
     return "BŁĄD: action = move | copy | delete | mkdir"
@@ -6249,6 +6540,7 @@ def _start_background(cmd: str, shell: str = "auto") -> str:
     import uuid
     pdir = Path.cwd() / _PROC_DIR
     pdir.mkdir(parents=True, exist_ok=True)
+    _doma_ignored()
     pid_key = uuid.uuid4().hex[:6]
     log = pdir / f"{pid_key}.log"
     argv, label = _shell_argv(cmd, shell)
@@ -6271,7 +6563,12 @@ def _start_background(cmd: str, shell: str = "auto") -> str:
 
 def _log_tail(path: Path, lines: int = 60) -> str:
     try:
-        data = Path(path).read_bytes()[-200_000:]
+        # Tylko koniec pliku: log serwera rośnie bez końca, a do 0.28.0 każdy podgląd czytał całość.
+        with open(path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - 200_000))
+            data = f.read()
     except OSError:
         return ""
     return "\n".join(_decode_output(data).splitlines()[-lines:])
@@ -6282,7 +6579,7 @@ def _proc_list() -> list:
     out = []
     for meta_file in sorted(pdir.glob("*.json")) if pdir.is_dir() else []:
         try:
-            meta = json.loads(meta_file.read_text())
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
         proc = _PROCS.get(meta["id"])
@@ -6851,6 +7148,9 @@ def t_install(args, auto_yes=False):
     return f"install {desc} → OK\n{tail}{hint}"
 
 
+_RUN_APP: dict = {}   # folder → Popen aplikacji z run_app (poll widzi, że padła)
+
+
 def t_run_app(args, auto_yes=False):
     """Uruchamia/zatrzymuje aplikację w TLE (dynamiczny serwer, np. Flask/Node) i
     zwraca URL. app_action: start (domyślnie) | stop | status | logs.
@@ -6864,6 +7164,9 @@ def t_run_app(args, auto_yes=False):
     pidfile.parent.mkdir(parents=True, exist_ok=True)
 
     def _alive():
+        proc = _RUN_APP.get(str(Path.cwd()))
+        if proc is not None:
+            return proc.poll() is None   # własne dziecko: poll odróżnia działający proces od zombie
         try:
             return _pid_alive(int(pidfile.read_text()))
         except Exception:
@@ -6879,16 +7182,29 @@ def t_run_app(args, auto_yes=False):
     if act == "stop":
         if pidfile.exists() and _alive():
             try:
-                _pid_terminate(int(pidfile.read_text()))
+                pid = int(pidfile.read_text())
+                if IS_WIN:
+                    _pid_terminate(pid)
+                else:
+                    import signal
+                    # cała grupa procesów: `cd x && npm run dev` zostawiało do 0.28.0 serwer na porcie
+                    try:
+                        os.killpg(pid, signal.SIGTERM)
+                    except OSError:
+                        _pid_terminate(pid)
             except Exception:
-                pass
+                pass  # nosec B110
+        proc = _RUN_APP.pop(str(Path.cwd()), None)
+        if proc is not None:
+            try:
+                proc.wait(3)
+            except Exception:  # noqa: BLE001
+                pass  # nosec B110
         pidfile.unlink(missing_ok=True)
         return "Aplikacja zatrzymana."
     if act == "logs":
-        try:
-            return "Log aplikacji (ostatnie linie):\n" + logfile.read_text()[-3000:]
-        except OSError:
-            return "(brak logów — aplikacja jeszcze nie startowała)"
+        tail = _log_tail(logfile, 80)
+        return ("Log aplikacji (ostatnie linie):\n" + tail) if tail else "(brak logów — aplikacja jeszcze nie startowała)"
     if act == "status":
         return (f"Aplikacja DZIAŁA: http://{ip}:{port}/" if pidfile.exists() and _alive()
                 else "Aplikacja nie jest uruchomiona (app_action=start).")
@@ -6903,21 +7219,39 @@ def t_run_app(args, auto_yes=False):
     if not auto_yes:
         if not confirm_action(_L("Uruchomić aplikację?"), command, ["run_app", command, port]):
             return "ODRZUCONE przez użytkownika — nie uruchamiam."
-    log = open(logfile, "w")
+    kw: dict = {"stdin": subprocess.DEVNULL, "cwd": str(Path.cwd())}
+    if IS_WIN:
+        kw["creationflags"] = 0x00000200  # NEW_PROCESS_GROUP
+    else:
+        kw["start_new_session"] = True     # własna grupa: stop zabija też dzieci powłoki
+    log = open(logfile, "wb")
     try:
-        proc = subprocess.Popen(command, shell=True, cwd=str(Path.cwd()),
-                                stdout=log, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(command, shell=True, stdout=log, stderr=subprocess.STDOUT, **kw)  # nosec B602 — komenda zatwierdzona
     finally:
         log.close()  # dziecko dziedziczy fd; rodzic nie trzyma uchwytu
     pidfile.write_text(str(proc.pid))
-    _time.sleep(1.5)
-    if not _alive():
+    _RUN_APP[str(Path.cwd())] = proc
+    # Do 15 s: czekamy, aż port odpowie albo proces się skończy (do 0.28.0 po 1,5 s zgłaszaliśmy
+    # sukces także wtedy, gdy aplikacja padła: proces-zombie wyglądał na żywy).
+    listening = False
+    deadline = _time.monotonic() + 15
+    while _time.monotonic() < deadline:
+        if proc.poll() is not None:
+            break
         try:
-            err = logfile.read_text()[-2000:]
+            with _sock.create_connection(("localhost", port), timeout=0.5):   # IPv4 i ::1 (Vite, Node)
+                listening = True
+                break
         except OSError:
-            err = ""
-        return f"BŁĄD: aplikacja padła zaraz po starcie.\n{err}"
-    return (f"Aplikacja uruchomiona: http://{ip}:{port}/\n"
+            _time.sleep(0.4)
+    if proc.poll() is not None:
+        pidfile.unlink(missing_ok=True)
+        _RUN_APP.pop(str(Path.cwd()), None)
+        return f"BŁĄD: aplikacja zakończyła się zaraz po starcie (kod {proc.returncode}).\n{_log_tail(logfile, 40)}"
+    if not listening:
+        return (f"Aplikacja działa w tle (pid {proc.pid}), ale po 15 s nic nie nasłuchuje na porcie {port}. "
+                "Sprawdź port w logach (app_action=logs) albo podaj właściwy port.\n" + _log_tail(logfile, 20))
+    return (f"Aplikacja uruchomiona i odpowiada: http://127.0.0.1:{port}/ (w sieci: http://{ip}:{port}/)\n"
             f"(w tle; logi: app_action=logs, zatrzymanie: app_action=stop. "
             f"Jeśli nie otwiera się z zewnątrz — otwórz port {port} w firewall.)")
 
@@ -7383,7 +7717,7 @@ def t_replace_lines(args):
     zostawia bez zmian. Pusty new_string = usunięcie linii."""
     path = _safe_path(args["path"])
     orig = _read_text_keep(path)
-    lines = orig.splitlines(keepends=True)
+    lines = _lines_keep(orig)
     start = int(args["start_line"])
     end = int(args.get("end_line") or start)
     if start < 1 or end < start or start > len(lines):
@@ -7391,8 +7725,17 @@ def t_replace_lines(args):
     new = args.get("new_string", "")
     if new and not new.endswith("\n"):
         new += "\n"
+    if new and end >= len(lines) and not orig.endswith("\n"):
+        new = new[:-1]   # plik bez końcowego znaku nowej linii zostaje bez niego
     lines[start - 1:end] = [new] if new else []
     return _apply(path, orig, "".join(lines), args, f"replace_lines {start}-{end}")
+
+
+def _lines_keep(text: str) -> list:
+    """Linie z końcami, dzielone TYLKO po \n: tak samo liczy grep i edytor. str.splitlines dzieli też
+    po \x0c, \x0b, \x85 i U+2028, więc numery z read_file rozjeżdżały się z grep i replace_lines
+    zmieniało złą linię."""
+    return re.findall(r"[^\n]*\n|[^\n]+$", text)
 
 
 def t_insert_lines(args):
@@ -7400,13 +7743,15 @@ def t_insert_lines(args):
     istniejących linii."""
     path = _safe_path(args["path"])
     orig = _read_text_keep(path, missing_ok=True)
-    lines = orig.splitlines(keepends=True)
+    lines = _lines_keep(orig)
     after = int(args.get("line") or 0)
     if after < 0 or after > len(lines):
         return f"BŁĄD: zła pozycja {after} (plik ma {len(lines)} linii)."
     new = args.get("new_string", "")
     if new and not new.endswith("\n"):
         new += "\n"
+    if after == len(lines) and lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"   # do 0.28.0 dopisek sklejał się z ostatnią linią („b”+„c” → „bc”)
     lines[after:after] = [new]
     return _apply(path, orig, "".join(lines), args, f"insert_lines @ {after}")
 
@@ -7559,6 +7904,8 @@ def enabled_tools(tools: list | None = None) -> list:
         off = off | _APP_ONLY_TOOLS   # terminal, przeglądarka i komputer są tylko w oknie Codo
     if _APP["out"] is None or not os.environ.get("CODO_APP_AGENT"):
         off = off | {"agenci"}   # rozmowy z innymi stałymi agentami: tylko stały agent w oknie Codo
+    if not _SERVE["on"]:
+        off = off | _PANEL_TOOLS   # narzędzia panelu WebStudio tylko w mostku `codo serve`
     if not os.environ.get("CODO_ZESPOL_DIR"):
         off = off | _TEAM_TOOL_NAMES   # narzędzia zespołu tylko u członka zespołu agentów
     else:
@@ -7662,8 +8009,21 @@ def run_tool(name: str, args: dict, auto_yes: bool) -> str:
     cap = 600_000 if name in ("render", "read_raw", "scan_sites", "list_files",
                               "read_text", "fetch_page", "smart_preview") else MAX_TOOL_RESULT_CHARS
     if len(result) > cap:
-        result = result[:cap] + "\n… (obcięte)"
+        result = result[:cap] + "\n… (obcięte)" if cap == 600_000 else _clip_middle(result, cap)
     return result
+
+
+def _clip_middle(text: str, cap: int) -> str:
+    """Długi wynik: początek i KONIEC (błędy testów, podsumowania i stopka „dalej: offset=…” są na końcu).
+    Do 0.28.0 zostawał tylko początek, więc model nie widział, czym skończyła się komenda."""
+    if len(text) <= cap:
+        return text
+    head = int(cap * 0.35)
+    tail = cap - head - 200
+    cut = text[head:len(text) - tail]
+    lines = cut.count("\n")
+    return (text[:head] + f"\n\n… [pominięto {len(cut)} znaków, {lines} linii ze środka; "
+            "zawęź wynik: grep, | tail, offset/limit] …\n\n" + text[len(text) - tail:])
 
 
 SYSTEM_PROMPT = """Jesteś Codo (komenda `codo`) — agentem CLI zarządzającym stroną/projektem \
@@ -7760,6 +8120,38 @@ _CTX_BUDGET = 220_000
 _CTX_MAX_MSGS = 180          # backend: max 200 wiadomości na krok
 _KEEP_RECENT = 12            # tyle ostatnich wiadomości nie skracamy
 _AGENT_RESULT_CAP = 60_000   # wynik jednego narzędzia w rozmowie z modelem
+# Narzędzia bez skutków ubocznych i bez interfejsu: kilka w jednym kroku modelu idzie naraz.
+_PARALLEL_TOOLS = {"read_file", "list_dir", "grep", "outline", "git_status", "diff", "backups", "find_files",
+                   "web_fetch", "plan_status", "local_skill"}
+
+
+def _parallel_reads(tool_calls: list, mode: str) -> dict:
+    """Wyniki odczytów policzone z góry, równolegle (do 8 naraz), gdy model wywołał ich kilka w jednym
+    kroku: prompt każe łączyć odczyty, a do 0.28.0 i tak szły po kolei. Kolejność w historii zostaje."""
+    jobs = []
+    for tc in tool_calls:
+        fn = (tc or {}).get("function") or {}
+        if fn.get("name") not in _PARALLEL_TOOLS or fn.get("name") in disabled_tool_names():
+            break   # tylko odczyty PRZED pierwszym zapisem/komendą: po nim muszą widzieć nowy stan
+        try:
+            args = json.loads(fn.get("arguments") or "{}") if isinstance(fn.get("arguments") or "{}", str) else dict(fn["arguments"])
+        except (ValueError, TypeError):
+            break
+        if not isinstance(args, dict) or not tc.get("id"):
+            break
+        jobs.append((tc["id"], fn["name"], args))
+    if len(jobs) < 2:
+        return {}
+    import concurrent.futures as cf
+    out = {}
+    with cf.ThreadPoolExecutor(max_workers=min(8, len(jobs))) as pool:
+        futs = {pool.submit(run_tool, n, a, False): i for i, n, a in jobs}
+        for f in cf.as_completed(futs):
+            try:
+                out[futs[f]] = f.result()
+            except Exception:  # noqa: BLE001 — policzy się jeszcze raz po kolei
+                pass  # nosec B110
+    return out
 
 # Etykiety narzędzi w terminalu (co agent robi, po ludzku).
 _TOOL_VERBS = {
@@ -7963,14 +8355,40 @@ def _diff_rows(diff: str) -> list:
 
 
 def _content_len(m: dict) -> int:
-    return len(str(m.get("content") or ""))
+    # Z argumentami wywołań: stare write_file/multi_edit niosą całe pliki, a do 0.28.0 nie były
+    # liczone do budżetu kontekstu ani przycinane (wysyłane w każdym kroku, aż do 413).
+    return len(str(m.get("content") or "")) + sum(
+        len(str(((tc or {}).get("function") or {}).get("arguments") or "")) for tc in (m.get("tool_calls") or []))
+
+
+_BULKY_ARGS = ("content", "new_string", "old_string", "edits", "code", "content_b64")
+
+
+def _shrink_call_args(m: dict) -> None:
+    """Stare wywołania zapisu: zamiast pełnej treści krótka notka (ścieżka zostaje, plik jest na dysku)."""
+    for tc in m.get("tool_calls") or []:
+        fn = (tc or {}).get("function") or {}
+        raw = fn.get("arguments")
+        if not isinstance(raw, str) or len(raw) < 1500:
+            continue
+        try:
+            args = json.loads(raw)
+        except ValueError:
+            continue
+        if not isinstance(args, dict):
+            continue
+        for k in _BULKY_ARGS:
+            v = args.get(k)
+            if isinstance(v, (str, list)) and len(json.dumps(v, ensure_ascii=False)) > 400:
+                args[k] = f"<{len(json.dumps(v, ensure_ascii=False))} znaków, już zapisane; aktualną treść czytaj z pliku>"
+        fn["arguments"] = json.dumps(args, ensure_ascii=False)
 
 
 def _context_usage(messages: list, chat: bool = False) -> dict:
     """Ile miejsca w kontekście zajmuje co: instrukcje, narzędzia, rozmowa, wyniki narzędzi (znaki ~ tokeny)."""
     instrukcje = rozmowa = wyniki = pliki = 0
     for m in messages:
-        n = _content_len(m) + sum(len(json.dumps(tc, ensure_ascii=False)) for tc in (m.get("tool_calls") or []))
+        n = len(str(m.get("content") or "")) + sum(len(json.dumps(tc, ensure_ascii=False)) for tc in (m.get("tool_calls") or []))
         rola = m.get("role")
         if rola == "system":
             instrukcje += n
@@ -8002,19 +8420,33 @@ def compact_history(messages: list) -> bool:
     if not over():
         return False
     cutoff = len(messages) - _KEEP_RECENT
+    # Od najstarszych i tylko tyle, ile trzeba: do 0.28.0 jedno przekroczenie kasowało naraz wszystkie
+    # starsze wyniki, a model czytał te same pliki od nowa.
     for i in range(1, max(1, cutoff)):
+        if not over():
+            return True
         m = messages[i]
+        if m.get("role") == "assistant":
+            _shrink_call_args(m)
         c = str(m.get("content") or "")
         if m.get("role") == "tool" and len(c) > 600:
             m["content"] = (c[:400] + f"\n… (wynik skrócony przy porządkowaniu kontekstu, "
                             f"{len(c)} znaków; uruchom narzędzie ponownie, jeśli potrzebujesz)")
+    if over():
+        # Zanim wyrzucimy całe tury: przytnij ogromne świeże wyniki, to zwykle one przepełniają kontekst.
+        for m in sorted(messages[1:], key=_content_len, reverse=True):
+            c = str(m.get("content") or "")
+            if m.get("role") == "tool" and len(c) > 20_000:
+                m["content"] = _clip_middle(c, 8_000)
+                if not over():
+                    return True
     while over():
         # Wiadomości systemowe na początku (prompt + kontekst umiejętności) zostają:
         # wycinanie od indeksu 1 kasowało instrukcje umiejętności w środku tury.
         head = 1
         while head < len(messages) and messages[head].get("role") == "system":
             head += 1
-        users = [i for i, m in enumerate(messages) if i > head and m.get("role") == "user"]
+        users = [i for i, m in enumerate(messages) if i > head and m.get("role") == "user" and not m.get("_codo_continue")]
         if users and users[0] < len(messages) - 2:
             del messages[head:users[0]]
             continue
@@ -8211,7 +8643,11 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
     if messages and messages[0].get("role") == "system" and "UMIEJĘTNOŚCI KONTA" not in messages[0].get("content", ""):
         messages[0]["content"] = str(messages[0].get("content", "")) + "\nUMIEJĘTNOŚCI KONTA: gdy zadanie wymaga metodyki, użyj wtyczka bez argumentów, wybierz pasującą umiejętność i wczytaj jej instrukcję przed pracą."
     spent_total = 0
+    continued = 0
     for _step in range(max_steps):
+        if SESSION.get("spend_cap") is not None and SESSION["spent"] >= SESSION["spend_cap"]:
+            print(yellow(_L("  Budżet kredytów tej pracy wyczerpany.")))
+            return False
         if compact_history(messages):
             print(dim(_L("  (uporządkowano starszy kontekst rozmowy)")))
         if sum(_content_len(m) for m in messages) > 300_000 or len(messages) > 200:
@@ -8246,6 +8682,14 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
         if resp.get("credits_remaining") is not None:
             SESSION["remaining"] = resp.get("credits_remaining")
         msg = resp["message"]
+        # Dostawca bez id wywołania (część serwerów zgodnych z OpenAI): własne, unikalne id. Do 0.28.0
+        # zastępowała je nazwa narzędzia, dwa read_file miały to samo id i następny krok kończył się 400.
+        seen_ids: set = set()
+        for tc in msg.get("tool_calls") or []:
+            if isinstance(tc, dict) and (not tc.get("id") or tc.get("id") in seen_ids):
+                tc["id"] = "call_" + os.urandom(12).hex()
+            if isinstance(tc, dict):
+                seen_ids.add(tc["id"])
         messages.append(msg)
         if resp.get("thinking"):
             SYNC.add("thinking", {"sekundy": 0, "tekst": str(resp["thinking"])[-4000:]})
@@ -8255,6 +8699,13 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
 
         if content:
             _print_assistant(content)
+        if not tool_calls and resp.get("finish_reason") == "length" and continued < 2:
+            # Odpowiedź ucięta na limicie tokenów: dalszy ciąg zamiast udawania, że to koniec.
+            continued += 1
+            messages.append({"role": "user", "_codo_continue": True,
+                             "content": "(Twoja odpowiedź została ucięta na limicie długości. "
+                             "Kontynuuj dokładnie od miejsca przerwania, bez powtarzania.)"})
+            continue
         if not tool_calls:
             if not _tty():
                 rem = resp.get("credits_remaining")
@@ -8264,6 +8715,7 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
 
         done: set = set()
         try:
+            early = _parallel_reads(tool_calls, mode)
             for tc in tool_calls:
                 fn = tc.get("function") or {}
                 name = fn.get("name") or "?"
@@ -8271,7 +8723,9 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
                 raw = fn.get("arguments") or "{}"
                 try:
                     args = json.loads(raw) if isinstance(raw, str) else dict(raw)
-                except ValueError:
+                    if not isinstance(args, dict):
+                        raise ValueError("not an object")
+                except (ValueError, TypeError):
                     # Najczęściej ucięty JSON (model skończył limit tokenów
                     # w środku dużego pliku). Mówimy mu to wprost.
                     print(f"\n{yellow(_tool_icon(name))} {bold(_TOOL_VERBS.get(name, name))} {dim(_L('(ucięte argumenty, proszę o mniejsze kroki)'))}")
@@ -8292,12 +8746,18 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
                     allowed = (_READ_ONLY_TOOLS | {"todo_write"} | _TEAM_TOOL_NAMES
                                | ({"process"} if args.get("action") in ("list", "output") else set())
                                | ({"task"} if str(args.get("kind") or "explore") != "general" else set()))
-                    result = (run_tool(name, args, False) if name in allowed else
+                    result = (early.get(tc_id) or run_tool(name, args, False) if name in allowed else
                               "ODRZUCONE: aktywny tryb tylko do odczytu; zmień tryb /mode.")
                 else:
-                    result = run_tool(name, args, auto_yes or authorized)
-                if len(result) > _AGENT_RESULT_CAP:
-                    result = result[:_AGENT_RESULT_CAP] + _L("\n… (obcięte)")
+                    result = early.get(tc_id) or run_tool(name, args, auto_yes or authorized)
+                shown_full = result
+                if name == "render" and not result.startswith(("BŁĄD", "ODRZUCONE")) and len(result) > 4000:
+                    # Pełny HTML z wklejonymi zasobami idzie tylko do podglądu; modelowi wystarczy potwierdzenie
+                    # (do 0.28.0 każde render dokładało do 60 tys. znaków do każdego kolejnego kroku).
+                    result = (f"Podgląd wyrenderowany ({len(result) // 1000} tys. znaków z wklejonymi zasobami) "
+                              "i pokazany użytkownikowi. Początek:\n" + result[:1500])
+                elif name not in ("read_raw", "read_text") and len(result) > _AGENT_RESULT_CAP:
+                    result = _clip_middle(result, _AGENT_RESULT_CAP)
                 new_edits = [e for e in EDIT_LOG if e["seq"] > seq_before]
                 failed = result.startswith(("BŁĄD", "ODRZUCONE"))
                 if name == "todo_write" and not failed:
@@ -8308,7 +8768,7 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
                     shown_lines = [] if new_edits and not failed else _result_lines(name, result, name in show_results)
                 LIVE.tool_end(not failed, header, shown_lines, name=name,
                               collapse=not new_edits and name not in show_results
-                              and name not in ("todo_write", "task"), full=result)
+                              and name not in ("todo_write", "task"), full=shown_full)
                 for entry in new_edits:
                     _print_edit(entry)
                     if entry["path"] not in SESSION["edited"]:
@@ -8326,14 +8786,17 @@ def _agent_turn(creds: dict, messages: list, model: str | None, auto_yes: bool,
                             done.add(pending_id)
                     print(dim(_L("  Działanie anulowane. Napisz, co mam zrobić inaczej.")))
                     return False
-        except KeyboardInterrupt:
+        except BaseException as exc:
             # Każde tool_call musi mieć odpowiedź, inaczej następny krok
-            # odrzuci dostawca modelu i rozmowa jest zepsuta do /clear.
+            # odrzuci dostawca modelu i rozmowa jest zepsuta do /clear. Także przy błędzie
+            # w samym Codo (do 0.28.0 łapany był tylko Ctrl+C i zapisywała się zepsuta historia).
+            why = ("PRZERWANE przez użytkownika (Ctrl+C)." if isinstance(exc, KeyboardInterrupt)
+                   else f"BŁĄD Codo przy wykonaniu narzędzia: {type(exc).__name__}: {exc}"[:400])
             for tc in tool_calls:
                 tc_id = tc.get("id") or (tc.get("function") or {}).get("name") or "?"
                 if tc_id not in done:
-                    messages.append({"role": "tool", "tool_call_id": tc_id,
-                                     "content": "PRZERWANE przez użytkownika (Ctrl+C)."})
+                    messages.append({"role": "tool", "tool_call_id": tc_id, "content": why})
+                    done.add(tc_id)
             raise
     print(yellow(_Lf('  Zatrzymano po {0} krokach.', max_steps)) + dim(_L(" Napisz ‘kontynuuj’, aby pracować dalej.")))
     return False
@@ -8917,6 +9380,7 @@ def serve(creds: dict, auto_yes: bool, site_url: str | None) -> int:
     import socket
     import time as _time
 
+    _SERVE["on"] = True   # panel WebStudio: szersze rooty i narzędzia panelu
     dev = load_device()
 
     # Auto-wykrycie strony z nginx (gdy nie podano --site): domena → site_url,
@@ -9547,10 +10011,16 @@ class _SessionSync:
             self.thread.join(3)
         self.stop.set()
         if self.started:
-            try:
-                api_call(self.creds, f"/cli/sesje/{self.id}/zamknij", {})
-            except BaseException:  # noqa: BLE001 — zamknięcie nie może blokować wyjścia
-                pass
+            # W osobnym wątku, najwyżej 3 s: bez sieci (zamknięta klapa, zmiana Wi-Fi) wyjście z Codo
+            # czekało do 0.28.0 na limit 240 s i dwie ponowne próby.
+            def bye():
+                try:
+                    api_call(self.creds, f"/cli/sesje/{self.id}/zamknij", {})
+                except BaseException:  # noqa: BLE001 — zamknięcie nie może blokować wyjścia
+                    pass  # nosec B110
+            t = threading.Thread(target=bye, daemon=True)
+            t.start()
+            t.join(3)
 
     # ── wpisy ───────────────────────────────────────────────────────────
     def add(self, kind: str, tresc: dict) -> None:
@@ -10265,7 +10735,7 @@ def _ca_source() -> str:
         if os.path.exists(bundle):
             return bundle
     try:
-        import certifi
+        import certifi  # noqa: F401 — sama obecność modułu wystarcza
         return "certifi"
     except Exception:
         pass  # nosec B110 — certifi to tylko jedna z dróg
@@ -10442,7 +10912,7 @@ def _convo_save(messages: list) -> None:
         except OSError:
             pass  # nosec B110 — Windows / cudzy katalog
         path = folder / f"{SESSION['convo_id']}.json"
-        tmp = path.with_suffix(".tmp")
+        tmp = path.with_suffix(f".{os.getpid()}.{uuid.uuid4().hex[:6]}.tmp")   # dwa terminale: osobne pliki
         tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         try:
             os.chmod(tmp, 0o600)
@@ -10454,6 +10924,14 @@ def _convo_save(messages: list) -> None:
             p.unlink()
     except OSError:
         pass  # nosec B110 — zapis rozmowy to wygoda, nie warunek pracy
+
+
+def _convo_any() -> bool:
+    """Czy w tym folderze jest jakaś zapisana rozmowa (bez czytania i parsowania wszystkich plików)."""
+    try:
+        return any(_convo_folder_dir().glob("*.json"))
+    except OSError:
+        return False
 
 
 def _convo_list() -> list:
@@ -13376,7 +13854,7 @@ def konektory_stan(odswiez: bool = False) -> dict:
         return {"konektory": [], "narzedzia": [], "blad": str(e)[:300]}
     except Exception:  # noqa: BLE001 — brak sieci
         try:
-            d = json.loads(plik.read_text())
+            d = json.loads(plik.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             d = {"konektory": [], "narzedzia": []}
         return {**d, "offline": True, "blad": _L("Bez sieci: połączone usługi wrócą, gdy będzie internet.")}
@@ -21068,28 +21546,6 @@ def _journal_tail(limit: int = 8000) -> str:
     return text[-limit:]
 
 
-def _pid_alive(pid) -> bool:
-    try:
-        pid = int(pid)
-    except (TypeError, ValueError):
-        return False
-    if pid <= 0:
-        return False
-    if IS_WIN:
-        try:
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True, timeout=10)
-            return str(pid) in out.stdout
-        except (OSError, subprocess.SubprocessError):
-            return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-
-
 def _notify(title: str, text: str) -> None:
     """Powiadomienie systemowe na koniec maratonu (macOS / Linux), bez błędów, gdy się nie da."""
     import shutil
@@ -21210,6 +21666,7 @@ def marathon(creds: dict, goal: str, model: str | None, auto_yes: bool, resume: 
     system = system_message(WORK_SYSTEM_PROMPT + MARATHON_PROMPT)
     messages = [system, {"role": "user", "content": seed}]
     status, stall, backoff, result_text = "running", 0, 30, ""
+    SESSION["marathon"] = True   # samodzielna praca: bez zgód „z cytatu” (cel pisał model w dzienniku)
     try:
         while True:
             if _wpath("stop").exists():
@@ -21226,9 +21683,14 @@ def marathon(creds: dict, goal: str, model: str | None, auto_yes: bool, resume: 
             steps_before = SESSION["steps"]
             state["segments"] += 1
             print(dim(_Lf('\n  ── odcinek {0} · {1}/{2} kr ──', state['segments'], used, budget)))
-            ok = agent_turn(creds, messages, model, auto_yes, tools=WORK_TOOLS,
-                            max_steps=_EFFORT_STEPS.get(current_effort(), 100),
-                            show_results=("plan_write", "plan_update", "plan_status", "check"), mode=mode)
+            # Budżet sprawdzany po każdym kroku, nie tylko między odcinkami (odcinek to do 400 kroków).
+            SESSION["spend_cap"] = SESSION["spent"] + (budget - used)
+            try:
+                ok = agent_turn(creds, messages, model, auto_yes, tools=WORK_TOOLS,
+                                max_steps=_EFFORT_STEPS.get(current_effort(), 100),
+                                show_results=("plan_write", "plan_update", "plan_status", "check"), mode=mode)
+            finally:
+                SESSION.pop("spend_cap", None)
             state["spent"] += SESSION["spent"] - spent0
             spent0 = SESSION["spent"]
             state["steps"] += SESSION["steps"] - steps_before
@@ -21238,6 +21700,20 @@ def marathon(creds: dict, goal: str, model: str | None, auto_yes: bool, resume: 
             if err in (401, 402, 403):
                 status = {401: "wylogowane", 402: "brak kredytów", 403: "brak dostępu"}[err]
                 break
+            if err in (400, 413, 422) and not ok:
+                # Żądanie, które się nie uda niezależnie od czekania (za duża historia, zepsute pary
+                # wywołań): świeży kontekst ze streszczenia. Do 0.28.0 ponawiane z czekaniem przez 24 h.
+                bad = state.get("bad_requests", 0) + 1
+                state["bad_requests"] = bad
+                _journal(f"Błąd {err}, świeży kontekst (próba {bad})")
+                if bad >= 3:
+                    status = "błąd"
+                    break
+                messages = [system_message(WORK_SYSTEM_PROMPT + MARATHON_PROMPT), {"role": "user", "content": (
+                    f"Cel: {goal}\n\nKontekst wyczyszczony po błędzie serwera.\nPlan:\n"
+                    f"{_plan_render(_plan_load()) or '(brak planu: zacznij od plan_write)'}\n\n"
+                    f"Dziennik (końcówka):\n{_journal_tail()}\n\nPracuj dalej, mniejszymi krokami.")}]
+                continue
             if err is not None and not ok:
                 # sieć, 429, 5xx: czekamy i próbujemy dalej tym samym kontekstem
                 print(yellow(_Lf('  Przerwa w łączności ({0}). Ponawiam za {1}.', err, _duration(backoff))))
@@ -21249,6 +21725,7 @@ def marathon(creds: dict, goal: str, model: str | None, auto_yes: bool, resume: 
                 state["segments"] -= 1
                 continue
             backoff = 30
+            state["bad_requests"] = 0
             last = next((str(m.get("content") or "") for m in reversed(messages)
                          if m.get("role") == "assistant" and str(m.get("content") or "").strip()), "")
             if _DONE_MARK in last.upper() and not _plan_open(_plan_load()):
@@ -21282,6 +21759,7 @@ def marathon(creds: dict, goal: str, model: str | None, auto_yes: bool, resume: 
     except KeyboardInterrupt:
         status = "zatrzymana"
     finally:
+        SESSION.pop("marathon", None)
         if old_term is not None:
             try:
                 signal.signal(signal.SIGTERM, old_term)
@@ -21624,7 +22102,41 @@ def _title_topic(task: str) -> str:
     return "✳ " + (topic[:1].upper() + topic[1:])
 
 
+def _crash_log(exc: BaseException) -> str:
+    """Ślad stosu do ~/.config/doma/crash.log (najwyżej ~200 kB), żeby błąd dało się zgłosić."""
+    import time
+    import traceback
+    path = CONFIG_DIR / "crash.log"
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        if path.exists() and path.stat().st_size > 200_000:
+            path.write_text(path.read_text(encoding="utf-8", errors="replace")[-100_000:], encoding="utf-8")
+        with path.open("a", encoding="utf-8") as f:
+            f.write(f"\n=== {time.strftime('%Y-%m-%d %H:%M:%S')} Codo {VERSION} ===\n")
+            f.write("".join(traceback.format_exception(type(exc), exc, exc.__traceback__)))
+    except OSError:
+        pass  # nosec B110
+    return str(path)
+
+
+def _hangup_as_interrupt() -> None:
+    """Zamknięte okno terminala (SIGHUP) albo `kill` (SIGTERM): przerwanie jak Ctrl+C, więc rozmowa
+    i historia poleceń się zapisują (do 0.28.0 proces ginął bez zapisu)."""
+    import signal
+    def handler(signum, frame):
+        SESSION["signalled"] = True   # REPL po zapisie kończy pracę (nie wraca do pytania)
+        raise KeyboardInterrupt
+    for name in ("SIGHUP", "SIGTERM"):
+        sig = getattr(signal, name, None)
+        if sig is not None and threading.current_thread() is threading.main_thread():
+            try:
+                signal.signal(sig, handler)
+            except (OSError, ValueError):
+                pass  # nosec B110
+
+
 def repl(creds: dict, model: str | None, auto_yes: bool) -> int:
+    _hangup_as_interrupt()
     SYNC.start(creds, model or current_model(None), "auto" if auto_yes else "ask")
     try:
         return _repl(creds, model, auto_yes)
@@ -21655,7 +22167,7 @@ def _repl(creds: dict, model: str | None, auto_yes: bool) -> int:
     hint = _L("  /commands komendy  ·  @ plik  ·  ! komenda  ·  esc przerywa")
     if shutil.get_terminal_size((80, 24)).columns <= len(hint):
         hint = _L("  /commands komendy  ·  esc przerywa")
-    if not start and shutil.get_terminal_size((80, 24)).columns > len(hint) + 24 and _convo_list():
+    if not start and shutil.get_terminal_size((80, 24)).columns > len(hint) + 24 and _convo_any():
         hint += "  ·  /resume wznawia"
     print(dim(hint))
     LIVE.session_start()
@@ -21853,8 +22365,19 @@ def _repl(creds: dict, model: str | None, auto_yes: bool) -> int:
             _convo_save(messages)
         except KeyboardInterrupt:
             _convo_save(messages)
+            if SESSION.pop("signalled", None):
+                return 0
             print("\n" + red("■") + " " + bold(_L("Przerwano")) + dim(_L(" · napisz, co mam zrobić inaczej")))
             SYNC.add("info", {"tekst": "Przerwano", "blad": True})
+            SYNC.set_state("idle", "")
+        except Exception as e:  # noqa: BLE001 — błąd w Codo nie kończy sesji ani nie gubi rozmowy
+            # Do 0.28.0 każdy nieprzewidziany wyjątek wyrzucał z REPL-a ze śladem stosu,
+            # a praca z całej tury (do 100 kroków) nie trafiała do zapisanej rozmowy.
+            _convo_save(messages)
+            where = _crash_log(e)
+            print("\n" + red("✗ ") + bold(_L("Błąd w Codo")) + dim(f" · {type(e).__name__}: {str(e)[:160]}"))
+            print(dim(_Lf("  Rozmowa zapisana, możesz pisać dalej. Szczegóły: {0}", where)))
+            SYNC.add("info", {"tekst": f"Błąd w Codo: {type(e).__name__}", "blad": True})
             SYNC.set_state("idle", "")
 
 
@@ -21917,7 +22440,14 @@ def _trust_facts(folder: Path) -> tuple[list[str], list[str]]:
 def _choose_trust(lines_above: int) -> bool:
     """Wybór „Nie, wyjdź” / „Tak, ufam temu folderowi” (domyślnie Tak), strzałki,
     Enter, Esc. Bez TTY: zwykłe pytanie t/N."""
-    if not (_tty() and sys.stdin and sys.stdin.isatty()) or IS_WIN or os.environ.get("TERM") == "dumb":
+    if not sys.stdin or not sys.stdin.isatty():
+        # Wejście z potoku albo bez terminala (CI, nohup): nie czytamy zgody ze stdin, bo pierwsza linia
+        # to zadanie (do 0.28.0 `echo "popraw X" | codo` kończyło się „Uruchomienie anulowane”).
+        print(red(_L("✗ Ten folder nie jest jeszcze zaufany.")) + dim(
+            _L(" Uruchom raz `codo` tutaj w terminalu i zgódź się na dostęp, potem działa też z potoku.")),
+            file=sys.stderr)
+        return False
+    if not _tty() or IS_WIN or os.environ.get("TERM") == "dumb":
         try:
             return input(_L("  Ufasz temu folderowi? [t/N] ")).strip().lower() in ("t", "tak", "y", "yes", "1")
         except EOFError:

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.29.0
+
+A cleaner, safer and faster engine.
+
+- **Faster turns**: reads, searches and listings that come before the first write run in parallel (up to 8 at once).
+- **Long answers keep going**: when a model stops at its output limit, Codo continues the answer by itself (up to two times).
+- **Smarter context**: old tool arguments shrink first, huge tool results are clipped in the middle instead of dropping whole turns, the context meter no longer counts twice.
+- **Retries that respect the provider**: 429, 5xx and 529 are retried with `Retry-After` (up to 5 attempts, 60 s at most); a refused connection or a bad certificate fails at once.
+- **Safer installs**: a package install needs your own words in the latest message, with every package named there; never in `codo work`.
+- **Atomic writes** for files, restores and settings (also on Windows), backups pruned to the last 20.
+- **Better file tools**: `edit_file` with `replace_all`, CRLF aware and with a hint when the text is almost there; line edits keep files without a trailing newline intact; `grep` searches hidden files but never `.env`; more build folders skipped.
+- **`run_app`** waits until the port answers (IPv4 and IPv6), shows the log tail and stops the whole process group.
+- **`codo work`** starts a fresh context after repeated 400/413/422 errors and stops at the spending cap.
+- **Sturdier REPL**: a crash in one turn is logged and the conversation goes on, SIGTERM and SIGHUP save and exit, the trust question never reads from a pipe.
+
 ## 0.28.0
 
 First release from the DomaAI organisation. Covers everything since 0.23.0.
