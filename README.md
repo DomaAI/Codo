@@ -82,7 +82,7 @@ codo
 | Area | What Codo does | Command |
 | --- | --- | --- |
 | Conversation | Interactive session, one shot task, resume, print mode for scripts with JSON output | `codo`, `codo "task"`, `codo -c`, `codo resume`, `codo -p --json` |
-| App window | Chat, approvals and file diffs in Codo's own window (Windows and Linux; `--tab` for a browser tab) | `codo ui` |
+| App window | The full Codo app on Windows and Linux, the same as on Mac: code, Office, bots and swarms, workflows, delegate, persistent agents and settings, in 18 languages (`--tab` for a browser tab) | `codo ui` |
 | Long work | Works alone for hours or days with a plan, log, queue of goals and hard limits | `codo work`, `codo work add`, `codo work status` |
 | Teams | A lead splits a goal, members work in separate git copies, reviewers check, you approve the plan and the merge, a pull request at the end | `codo team run`, `codo team apply --pr` |
 | Groups of agents | Claude, Codex and Gemini in parallel with a synthesis, split work, cross review, voting, a pipeline or a group chat | `codo group` |

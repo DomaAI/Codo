@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.30.0
+
+### The full Codo app on Windows and Linux
+
+`codo ui` (and **Codo** in the Start menu) now opens the same app as Codo for Mac, screen for screen:
+
+- **Code**: tabs, the sidebar with chats and your persistent agents, the greeting with your agent, the composer with files (+, drag and drop, paste), @ mentions, Files and Chat, the permission mode, your balance and the model, and the Changes panel with live diffs.
+- **Office**: presentations, documents and spreadsheets with the editor, live writing and export to PowerPoint, Word, Excel, CSV, Markdown and HTML (PDF through print).
+- **Bots**: describe a bot in your own words, ready characters and tasks, swarms on a canvas, results and approvals, and channels: Telegram, Discord, Slack, Signal and e-mail.
+- **Workflows**: steps, checks and loops on a canvas, ready templates and runs you can watch.
+- **Delegate**: say what to do, who takes it, where, when and where the result goes.
+- **Persistent agents**: the "Meet your agent" creator and a conversation with each agent, with its own settings, memory and schedule. They keep working in the background through `codo host`, on Windows too (over a local connection with a token).
+- **Settings**: your agent, skills, tools, LogBot, accounts, 38 connections, cloud computer, appearance (light, dark, 18 languages), limits and quiet hours, privacy and updates.
+
+Bots, swarms and agents use the same `~/.config/doma/hive.json` as Codo for Mac, so they move between computers as they are.
+
+Not yet on Windows and Linux: iMessage and Mac notifications, swarms on a schedule, bot triggers (file, webhook, mail) and importing DOCX and PPTX into Office.
+
 ## 0.29.3
 
 ### Codo updates itself
