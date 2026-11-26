@@ -13,8 +13,8 @@ jobs:
           - { os: ubuntu-22.04, name: codo-linux-x64 }
           - { os: ubuntu-22.04-arm, name: codo-linux-arm64 }
           - { os: windows-latest, name: codo-windows-x64.exe }
-          - { os: macos-14, name: codo-macos-arm64 }
-          - { os: macos-13, name: codo-macos-x64 }
+          - { os: macos-latest, name: codo-macos-arm64 }
+          - { os: macos-15-intel, name: codo-macos-x64 }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -36,6 +36,7 @@ jobs:
 
   release:
     needs: binaries
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
