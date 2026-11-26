@@ -1,0 +1,25 @@
+name: Publish release
+# Push to the `publish` branch with the tag name in .github/publish-tag:
+# the draft release for that tag becomes the latest published release,
+# older drafts are removed.
+on:
+  push:
+    branches: [publish]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(tr -d '[:space:]' < .github/publish-tag)"
+          gh release view "$tag" --json assets -q '.assets[].name'
+          gh release edit "$tag" --draft=false --latest
+          for d in $(gh api "repos/$GITHUB_REPOSITORY/releases" -q '.[] | select(.draft) | .id'); do
+            gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$d"
+          done
+          gh release list --limit 5
