@@ -49,7 +49,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VERSION = "0.29.0"
+VERSION = "0.29.1"
 APP_NAME = "Codo"                # marka; komenda: codo (dawne: domaai, doma, domaai-code)
 PROJECT_NOTES = "Codo.md"        # pamięć projektu; DOMAAI.md czytany dla zgodności
 API_URL = os.environ.get("DOMA_API_URL", "https://bymadd.pl").rstrip("/")
@@ -2676,7 +2676,7 @@ def _autostart_install(folder: Path, auto_yes: bool, site_url: str | None,
             content = (
                 "@echo off\r\n"
                 f"rem {APP_NAME} - mostek codo serve\r\n"
-                (f'start "codo serve" /min "{sys.executable}"{args}\r\n' if FROZEN
+                + (f'start "codo serve" /min "{sys.executable}"{args}\r\n' if FROZEN
                  else f'start "codo serve" /min "{_win_pythonw()}" "{_self_path()}"{args}\r\n'))
             # cmd.exe czyta pliki .bat/.cmd w kodowaniu OEM konsoli (np. cp852
             # dla PL), NIE w UTF-8 — nie-ASCII w ścieżkach (C:\Users\Paweł)

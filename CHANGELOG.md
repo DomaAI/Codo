@@ -1,13 +1,21 @@
 # Changelog
 
-## 0.29.0
+## 0.29.1
 
 ### Windows
 
 - New installer `CodoSetup-x64.exe`: installs for your user without administrator rights, adds `codo` to PATH, a Start menu shortcut (and an optional desktop one) that opens the Codo window in your browser, and a clean uninstaller.
 - `codo.exe` has the Codo icon and file details.
 - Double clicking `codo.exe` opens the Codo window in your browser in `~/Codo` instead of a console that closed at once.
+- `codo link` on Windows wrote a broken autostart file and failed; the bridge now starts with Windows again.
 - Single files (Windows, Linux, macOS) now restart themselves correctly: the browser window, teams, MCP and background work used to fail there.
+
+### Everywhere
+
+- With `CODO_LANG` set to one of 18 languages (for example `de`, `fr`, `ja`, `zh-Hans`) the agent answers in that language.
+- README: how Codo works and everything it does in one place.
+
+## 0.29.0
 
 A cleaner, safer and faster engine.
 
