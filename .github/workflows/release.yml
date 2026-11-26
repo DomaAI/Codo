@@ -52,6 +52,25 @@ jobs:
           pyinstaller --onefile --name codo --collect-data certifi --hidden-import certifi "${extra[@]}" codo_main.py
           mkdir -p out
           if [ -f dist/codo.exe ]; then cp dist/codo.exe "out/${{ matrix.name }}"; else cp dist/codo "out/${{ matrix.name }}"; fi
+      - name: Sign codo.exe (Azure Artifact Signing, only when configured)
+        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files-folder: dist
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Copy the signed exe
+        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        shell: bash
+        run: cp dist/codo.exe "out/${{ matrix.name }}"
       - name: Smoke test
         shell: bash
         run: ./out/${{ matrix.name }} --version
@@ -67,6 +86,26 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$ver" "/DSourceExe=..\out\codo.exe" installer\codo.iss
           if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
           Get-Item out/CodoSetup-x64.exe | Format-List Name, Length
+          New-Item -ItemType Directory -Force setup | Out-Null; Copy-Item out/CodoSetup-x64.exe setup/
+      - name: Sign the installer (only when configured)
+        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          files-folder: setup
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+      - name: Copy the signed installer
+        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        shell: bash
+        run: cp setup/CodoSetup-x64.exe out/CodoSetup-x64.exe
       - name: Test the Windows installer
         if: runner.os == 'Windows'
         shell: pwsh
@@ -92,10 +131,12 @@ jobs:
             catch { if ($_.Exception.Response) { $ok = $true } }
           }
           Get-Content out\ui.out, out\ui.err -ErrorAction SilentlyContinue
-          if (-not $ui.HasExited) { Stop-Process -Id $ui.Id -Force }
+          Get-Process codo -ErrorAction SilentlyContinue | Stop-Process -Force   # the single file runs as two processes
           if (-not $ok) { throw "codo ui did not answer on 127.0.0.1:8765" }
-          $u = Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'Programs\Codo\unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait -PassThru
-          Start-Sleep -Seconds 2
+          Start-Sleep -Seconds 1
+          Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'Programs\Codo\unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait
+          # the uninstaller hands over to a copy of itself in %TEMP% and returns at once: wait for it
+          for ($i = 0; $i -lt 60 -and (Test-Path $exe); $i++) { Start-Sleep -Milliseconds 500 }
           if (Test-Path $exe) { throw "uninstall left codo.exe" }
           if ([Environment]::GetEnvironmentVariable('Path', 'User') -like "*Programs\Codo*") { throw "uninstall left PATH entry" }
           "installer OK"
