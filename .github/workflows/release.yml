@@ -5,8 +5,18 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  id-token: write   # GitHub OIDC login to Azure for code signing, no stored secrets
+env:
+  # Azure Artifact Signing (MADD). Signing turns on when SIGN_PROFILE is set,
+  # i.e. once Microsoft has validated the company and the certificate profile exists.
+  AZURE_TENANT_ID: 9a6ca948-e1b8-4e38-b87d-75f05d0fec78
+  AZURE_CLIENT_ID: 8231e8ac-a9e9-4206-9b47-c96ad850b9e4
+  SIGN_ENDPOINT: https://neu.codesigning.azure.net/
+  SIGN_ACCOUNT: maddcodo
+  SIGN_PROFILE: ""
 jobs:
   binaries:
+    environment: release   # the Azure federated credential trusts this environment only
     strategy:
       fail-fast: false
       matrix:
@@ -51,23 +61,37 @@ jobs:
           pyinstaller --onefile --name codo --collect-data certifi --hidden-import certifi "${extra[@]}" codo_main.py
           mkdir -p out
           if [ -f dist/codo.exe ]; then cp dist/codo.exe "out/${{ matrix.name }}"; else cp dist/codo "out/${{ matrix.name }}"; fi
+      - name: Azure login for signing (OIDC)
+        if: runner.os == 'Windows' && env.SIGN_PROFILE != ''
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
       - name: Sign codo.exe (Azure Artifact Signing, only when configured)
-        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        if: runner.os == 'Windows' && env.SIGN_PROFILE != ''
         uses: azure/trusted-signing-action@v0.5.1
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          endpoint: ${{ env.SIGN_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.SIGN_ACCOUNT }}
+          certificate-profile-name: ${{ env.SIGN_PROFILE }}
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
           files-folder: dist
           files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
       - name: Copy the signed exe
-        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        if: runner.os == 'Windows' && env.SIGN_PROFILE != ''
         shell: bash
         run: cp dist/codo.exe "out/${{ matrix.name }}"
       - name: Smoke test
@@ -87,22 +111,29 @@ jobs:
           Get-Item out/CodoSetup-x64.exe | Format-List Name, Length
           New-Item -ItemType Directory -Force setup | Out-Null; Copy-Item out/CodoSetup-x64.exe setup/
       - name: Sign the installer (only when configured)
-        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        if: runner.os == 'Windows' && env.SIGN_PROFILE != ''
         uses: azure/trusted-signing-action@v0.5.1
         with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
-          trusted-signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_SIGNING_PROFILE }}
+          endpoint: ${{ env.SIGN_ENDPOINT }}
+          trusted-signing-account-name: ${{ env.SIGN_ACCOUNT }}
+          certificate-profile-name: ${{ env.SIGN_PROFILE }}
+          exclude-environment-credential: true
+          exclude-workload-identity-credential: true
+          exclude-managed-identity-credential: true
+          exclude-shared-token-cache-credential: true
+          exclude-visual-studio-credential: true
+          exclude-visual-studio-code-credential: true
+          exclude-azure-cli-credential: false
+          exclude-azure-powershell-credential: true
+          exclude-azure-developer-cli-credential: true
+          exclude-interactive-browser-credential: true
           files-folder: setup
           files-folder-filter: exe
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
       - name: Copy the signed installer
-        if: runner.os == 'Windows' && vars.AZURE_SIGNING_ACCOUNT != ''
+        if: runner.os == 'Windows' && env.SIGN_PROFILE != ''
         shell: bash
         run: cp setup/CodoSetup-x64.exe out/CodoSetup-x64.exe
       - name: Test the Windows installer
