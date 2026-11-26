@@ -1,8 +1,5 @@
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/agents-dark.png">
-    <img src="assets/agents-light.png" alt="Codo and its agents: Josh, Luna, Codo, Max and Mia">
-  </picture>
+  <img src="assets/agents.png" width="720" alt="Codo and its crew: Josh, Luna, Codo, Max and Mia">
 </p>
 
 <h1 align="center">Codo</h1>
