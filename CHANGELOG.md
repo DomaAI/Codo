@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.30.1
+
+### Bots and agents work with the window closed
+
+- Swarms run on their own schedule (hourly, daily, on weekdays, weekly) through `codo host`. Results go to the inbox and to your connected channels.
+- Bots and persistent agents wake up when something happens: a folder changes, a pull request gets a failed check or a new comment, a new e-mail arrives, or a webhook is called (a local address with its own secret key). Set it up under "Also wakes it" in the bot or agent settings.
+- Work you delegate now reports back to the channels you picked.
+
+### Office
+
+- Open Word, PowerPoint and Excel files as new Office files, and attach PDF, DOCX, PPTX and XLSX files as sources for Codo.
+- Export slides and designs as PNG. Pictures now end up in exported Word files.
+- "Show in folder" opens the Office folder in Explorer or your file manager.
+
+### Fixes
+
+- Several screens could stay visible behind another one after switching.
+- German and Ukrainian: no more "Mac" and English sentences; weekday names follow the window language.
+- Narrow windows (1000 px) no longer cut cards and buttons.
+- Polish texts in Office were partly in English in 0.30.0.
+- A crafted document could write a picture outside the Office media folder.
+
 ## 0.30.0
 
 ### The full Codo app on Windows and Linux
