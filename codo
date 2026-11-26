@@ -49,7 +49,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VERSION = "0.29.2"
+VERSION = "0.29.3"
 APP_NAME = "Codo"                # marka; komenda: codo (dawne: domaai, doma, domaai-code)
 PROJECT_NOTES = "Codo.md"        # pamięć projektu; DOMAAI.md czytany dla zgodności
 API_URL = os.environ.get("DOMA_API_URL", "https://bymadd.pl").rstrip("/")
@@ -10686,6 +10686,19 @@ def _keep_shebang(target: Path, data: bytes) -> bytes:
 def self_update(force: bool = False) -> int:
     """Pobiera najnowsze CLI z serwera, sprawdza SHA-256 i podmienia ten plik."""
     import hashlib
+    if FROZEN:
+        print(dim(_Lf('Sprawdzam {0} …', f"{API_URL}/static/codo/cli/")))
+        try:
+            data, _v = _fetch_update()
+            if not data:
+                print(green(_Lf('✓ Masz najnowszą wersję ({0}).', VERSION)))
+                return 0
+            _install_update(data)
+        except Exception as e:  # noqa: BLE001
+            print(red(_L("✗ Pobieranie nie powiodło się: ")) + describe_error(e))
+            return 1
+        print(green(_L("✓ Zaktualizowano. Nowa wersja działa od następnego uruchomienia.")))
+        return 0
     target = Path(_self_path())
     print(dim(_Lf('Sprawdzam {0}/cli/doma …', API_URL)))
     try:
@@ -10733,6 +10746,132 @@ def self_update(force: bool = False) -> int:
                   " (albo: codo unlink && codo link w danym folderze).")))
     return 0
 
+
+
+# ── Aktualizacje same (0.29.2) ───────────────────────────────────────────────────────────
+# Raz na dobę Codo sprawdza /cli/info; gdy jest nowsza wersja, w tle pobiera ją, sprawdza
+# SHA-256 i podmienia siebie. Działa dla skryptu (codo.py, ~/.local/bin/codo) i dla pojedynczego
+# pliku (codo.exe, codo-linux-x64, codo-macos-*), który pobiera swój własny plik z SHA256SUMS.
+# Nowa wersja rusza od następnego uruchomienia. Wyłączenie: codo update --auto off
+# albo CODO_NO_AUTO_UPDATE=1. Aplikacja na Maca aktualizuje swój silnik sama, więc tu nie.
+
+def _frozen_asset_name() -> str | None:
+    import platform
+    arm = platform.machine().lower() in ("arm64", "aarch64")
+    if IS_WIN:
+        return "codo-windows-x64.exe"
+    if IS_MAC:
+        return "codo-macos-arm64" if arm else "codo-macos-x64"
+    if sys.platform.startswith("linux"):
+        return "codo-linux-arm64" if arm else "codo-linux-x64"
+    return None
+
+
+def _update_target() -> Path:
+    return Path(sys.executable if FROZEN else _self_path()).resolve()
+
+
+def _auto_update_allowed() -> bool:
+    if os.environ.get("CODO_NO_AUTO_UPDATE") or os.environ.get("CI"):
+        return False
+    if load_settings().get("auto_update") is False:
+        return False
+    t = _update_target()
+    s = str(t).replace("\\", "/")
+    if ".app/Contents/" in s or s.endswith("static/cli/doma") or "site-packages" in s:
+        return False   # aplikacja na Maca, kopia robocza repozytorium, pakiet pip
+    return os.access(t.parent, os.W_OK) and os.access(t, os.W_OK)
+
+
+def _download(url: str, timeout: int = 120) -> bytes:
+    req = urllib.request.Request(url, headers={"User-Agent": f"codo/{VERSION}"})
+    with urllib.request.urlopen(req, timeout=timeout, context=_ssl_ctx()) as resp:  # nosec B310 — stały https API_URL
+        return resp.read()
+
+
+def _fetch_update() -> tuple:
+    """(dane, wersja albo None) najnowszego Codo dla tej instalacji, sprawdzone SHA-256. Wyjątek przy błędzie."""
+    import hashlib
+    if FROZEN:
+        name = _frozen_asset_name()
+        if not name:
+            raise RuntimeError("unsupported platform")
+        sums = _download(f"{API_URL}/static/codo/cli/SHA256SUMS", 20).decode("utf-8", "replace")
+        expected = next((ln.split()[0] for ln in sums.splitlines()
+                         if len(ln.split()) == 2 and ln.split()[1].lstrip("*") == name), "")
+        if len(expected) != 64:
+            raise RuntimeError("no checksum for " + name)
+        if hashlib.sha256(_update_target().read_bytes()).hexdigest() == expected:
+            return b"", None   # ten sam plik: nic do zrobienia
+        data = _download(f"{API_URL}/static/codo/cli/{name}", 300)
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise RuntimeError("SHA-256")
+        return data, None
+    data = _download(f"{API_URL}/cli/doma", 60)
+    expected = _download(f"{API_URL}/cli/doma.sha256", 20).decode().strip()[:64]
+    if b"doma" not in data[:400] or hashlib.sha256(data).hexdigest() != expected:
+        raise RuntimeError("SHA-256")
+    m = re.search(rb'^VERSION = "([^"]+)"', data, re.M)
+    return data, (m.group(1).decode() if m else None)
+
+
+def _install_update(data: bytes) -> None:
+    """Podmiana siebie. Windows nie pozwala nadpisać działającego .exe, ale pozwala zmienić mu nazwę."""
+    target = _update_target()
+    tmp = target.with_name(target.name + ".new")
+    tmp.write_bytes(data if FROZEN else _keep_shebang(target, data))
+    if not IS_WIN:
+        os.chmod(tmp, 0o755)
+    if IS_WIN and FROZEN:
+        old = target.with_name(target.stem + ".old.exe")
+        try:
+            old.unlink(missing_ok=True)
+        except OSError:
+            old = target.with_name(f"{target.stem}.old-{os.getpid()}.exe")
+        os.replace(target, old)
+        try:
+            os.replace(tmp, target)
+        except OSError:
+            os.replace(old, target)   # przywracamy działający plik
+            raise
+        return
+    os.replace(tmp, target)
+
+
+def _auto_update_worker(latest: str) -> None:
+    try:
+        data, ver = _fetch_update()
+        if not data:
+            return
+        if ver and _ver_tuple(ver) <= _ver_tuple(VERSION):
+            return
+        _install_update(data)
+        st = load_settings()
+        st["auto_updated_to"] = ver or latest
+        save_settings(st)
+    except Exception:
+        pass  # nosec B110 — aktualizacja w tle nigdy nie przerywa pracy; spróbuje jutro
+
+
+def auto_update_start() -> None:
+    """Na starcie: komunikat o aktualizacji z poprzedniego razu i (raz na dobę) aktualizacja w tle."""
+    if IS_WIN and FROZEN:   # stary .exe odłożony przy poprzedniej aktualizacji
+        for old in _update_target().parent.glob(_update_target().stem + ".old*.exe"):
+            try:
+                old.unlink()
+            except OSError:
+                pass  # nosec B110 — jeszcze działa, usuniemy następnym razem
+    st = load_settings()
+    done = st.pop("auto_updated_to", None)
+    if done:
+        save_settings(st)
+        if _ver_tuple(done) <= _ver_tuple(VERSION) or FROZEN:
+            print(green(_Lf("✓ Codo zaktualizowało się samo do wersji {0}.", done)))
+    if not _auto_update_allowed():
+        return
+    newer = update_hint()
+    if newer:
+        threading.Thread(target=_auto_update_worker, args=(newer,), daemon=True).start()
 
 def _tool_path(name: str) -> str | None:
     """Ścieżka programu albo None. Na macOS bez narzędzi wiersza poleceń /usr/bin/git
@@ -27297,6 +27436,16 @@ def main() -> int:
     if args[:1] == ["model"]:
         return cmd_model(args[1] if len(args) > 1 else None)
     if args[:1] in (["update"], ["upgrade"]):
+        if "--auto" in args:
+            val = (args[args.index("--auto") + 1:] or [""])[0].lower()
+            if val not in ("on", "off"):
+                print(red(_L("✗ Użyj: codo update --auto on albo off")))
+                return 2
+            st = load_settings()
+            st["auto_update"] = val == "on"
+            save_settings(st)
+            print(green(_L("✓ Aktualizacje same: włączone.") if val == "on" else _L("✓ Aktualizacje same: wyłączone.")))
+            return 0
         return self_update(force="--force" in args)
     if args[:1] == ["doctor"]:
         return doctor()
@@ -27419,9 +27568,12 @@ def main() -> int:
     if auto_yes:
         print(yellow(_L("⏵⏵ --yes: agent wykonuje komendy bez pytania.")))
     if not args:
-        newer = update_hint()
-        if newer:
-            print(yellow(_Lf('↑ Dostępna wersja {0}', newer)) + dim(_L(" — codo update")))
+        if _auto_update_allowed():
+            auto_update_start()
+        else:
+            newer = update_hint()
+            if newer:
+                print(yellow(_Lf('↑ Dostępna wersja {0}', newer)) + dim(_L(" — codo update")))
         notes = _project_notes_file()
         if notes:
             print(dim(_Lf('  Pamięć projektu: {0}', notes.name)))
@@ -27925,6 +28077,10 @@ def codo_ui(args: list, model: str | None) -> int:
         server.server_close()
         print(red(_Lf('✗ Nie mogę uruchomić silnika Codo: {0}', exc)))
         return 1
+    try:
+        auto_update_start()
+    except Exception:
+        pass  # nosec B110
     print(bold("Codo") + dim(_L(" w przeglądarce · ")) + str(Path.cwd()))
     print("  " + violet(url), flush=True)
     print(dim(_L("  Ctrl+C kończy. Zamknięcie karty też zatrzymuje Codo po chwili.")), flush=True)
@@ -29281,6 +29437,16 @@ _EN.update({
     "Logowanie tą metodą jest chwilowo wyłączone. Zaloguj się kodem z maila.": "This way of signing in is off for now. Sign in with the code from your email.",
     "Logowanie wygasło albo zostało odrzucone. Spróbuj jeszcze raz.": "The sign in expired or was rejected. Try again.",
     "Minęło za dużo czasu. Spróbuj jeszcze raz.": "Too much time has passed. Try again.",
+})
+
+# Aktualizacje same (26.11.2026).
+_EN.update({
+    "✓ Codo zaktualizowało się samo do wersji {0}.": "✓ Codo updated itself to version {0}.",
+    "✓ Zaktualizowano. Nowa wersja działa od następnego uruchomienia.": "✓ Updated. The new version runs from the next start.",
+    "✗ Użyj: codo update --auto on albo off": "✗ Use: codo update --auto on or off",
+    "Sprawdzam {0} …": "Checking {0} …",
+    "✓ Aktualizacje same: włączone.": "✓ Automatic updates: on.",
+    "✓ Aktualizacje same: wyłączone.": "✓ Automatic updates: off.",
 })
 
 # Okno Codo na Windows i Linuksie (26.11.2026).

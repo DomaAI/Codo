@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.29.3
+
+### Codo updates itself
+
+- Once a day Codo checks for a new version and, if there is one, downloads it in the background, checks its SHA-256 and replaces itself. The new version runs from the next start, and Codo tells you it updated.
+- Works for the script install (`install.sh`, `install.ps1`) and for the single files and the Windows installer, which fetch their own file from `SHA256SUMS`.
+- `codo update` on a single file (for example `codo.exe`) no longer overwrites the program with the Python script.
+- Turn it off with `codo update --auto off` (on again with `--auto on`) or `CODO_NO_AUTO_UPDATE=1`. The Mac app updates its engine itself.
+
 ## 0.29.2
 
 ### Codo in its own window on Windows and Linux

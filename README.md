@@ -94,7 +94,8 @@ codo
 | Project memory | `Codo.md` read at every start, `/init` writes one | `/init` |
 | Your commands | Markdown files become slash commands | `.codo/commands/NAME.md` |
 | Phone | Follow the session and answer its questions from the DomaAI app | `codo serve`, `codo pair`, `/rc` |
-| Maintenance | Self update, diagnosis of connection, account, `PATH` and autostart | `codo update`, `codo doctor`, `codo status` |
+| Updates | Updates itself once a day in the background (SHA-256 checked), or right now on demand | `codo update`, `codo update --auto off` |
+| Maintenance | Diagnosis of connection, account, `PATH` and autostart | `codo doctor`, `codo status` |
 
 ### In the interactive session
 
