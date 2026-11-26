@@ -83,7 +83,8 @@ jobs:
           if (-not (Test-Path $lnk)) { throw "Start menu shortcut missing" }
           # The browser window: codo ui must start its server (it used to crash in the single file).
           $work = Join-Path $env:RUNNER_TEMP 'codo-ui'; New-Item -ItemType Directory -Force $work | Out-Null
-          $ui = Start-Process -FilePath $exe -ArgumentList 'ui','--no-browser','--port','8765' -WorkingDirectory $work -PassThru -RedirectStandardOutput out\ui.out -RedirectStandardError out\ui.err
+          New-Item -ItemType File -Force out\empty.txt | Out-Null   # no console on stdin: no folder trust question
+          $ui = Start-Process -FilePath $exe -ArgumentList 'ui','--no-browser','--port','8765' -WorkingDirectory $work -PassThru -RedirectStandardInput out\empty.txt -RedirectStandardOutput out\ui.out -RedirectStandardError out\ui.err
           $ok = $false
           for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
             Start-Sleep -Milliseconds 500
