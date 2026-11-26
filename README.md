@@ -19,6 +19,8 @@
 <p align="center">
   <a href="https://domaai.pl/pobierz-codo.html"><b>Download page</b></a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#see-it-work">See it work</a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#screenshots">Screenshots</a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#how-codo-compares">Compare</a>
@@ -36,7 +38,8 @@
 </p>
 
 <p align="center">
-  <img src="assets/screens/mac-main.webp" width="900" alt="Codo app: agents Luna, Max, Josh and Mia in the sidebar, Claude Code as the brain">
+  <img src="assets/demo/many-brains.webp" width="900" alt="Recording: a task runs on Claude Code, Claude Code reaches its plan limit and Codex finishes the same turn">
+  <br><sub>One conversation, many brains: when Claude Code hits its plan limit, Codex picks up right where it left off.</sub>
 </p>
 
 ## Get Codo
@@ -99,6 +102,18 @@ the same turn moves on to the next brain with the whole history, files and plan.
   its questions from your phone. Commands that change things still ask for consent.
 - **A single Python file.** No dependencies beyond Python 3.9+, and the installer brings Python along
   when the computer has none.
+
+## See it work
+
+<p align="center">
+  <img src="assets/demo/agents-together.webp" width="900" alt="Recording: a group of agents splits a launch between Max, Josh and Mia, each on its own brain">
+  <br><sub>Your agents work together: mention one, and the team splits the work across Claude Code, Codex and Gemini.</sub>
+</p>
+
+<p align="center">
+  <img src="assets/demo/team-ships.webp" width="900" alt="Recording: an agent team gets its plan approved, works in parallel and opens a pull request">
+  <br><sub>A team that ships: approve the plan, watch agents build and review in parallel, then open the pull request.</sub>
+</p>
 
 ## Screenshots
 
