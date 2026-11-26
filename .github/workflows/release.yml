@@ -2,7 +2,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-    branches: ["win-installer"]   # test builds without a release
   workflow_dispatch:
 permissions:
   contents: write

@@ -2,6 +2,13 @@
 
 ## 0.29.0
 
+### Windows
+
+- New installer `CodoSetup-x64.exe`: installs for your user without administrator rights, adds `codo` to PATH, a Start menu shortcut (and an optional desktop one) that opens the Codo window in your browser, and a clean uninstaller.
+- `codo.exe` has the Codo icon and file details.
+- Double clicking `codo.exe` opens the Codo window in your browser in `~/Codo` instead of a console that closed at once.
+- Single files (Windows, Linux, macOS) now restart themselves correctly: the browser window, teams, MCP and background work used to fail there.
+
 A cleaner, safer and faster engine.
 
 - **Faster turns**: reads, searches and listings that come before the first write run in parallel (up to 8 at once).
