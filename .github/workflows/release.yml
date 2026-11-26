@@ -150,6 +150,10 @@ jobs:
           if ($userPath -notlike "*Programs\Codo*") { throw "PATH not updated: $userPath" }
           $lnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Codo.lnk'
           if (-not (Test-Path $lnk)) { throw "Start menu shortcut missing" }
+          $lnk2 = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Codo Terminal.lnk'
+          if (-not (Test-Path $lnk2)) { throw "Codo Terminal shortcut missing" }
+          $args1 = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).Arguments
+          if ($args1 -ne 'okno') { throw "Codo shortcut should start the app window, got '$args1'" }
           # The browser window: codo ui must start its server (it used to crash in the single file).
           $work = Join-Path $env:RUNNER_TEMP 'codo-ui'; New-Item -ItemType Directory -Force $work | Out-Null
           New-Item -ItemType File -Force out\empty.txt | Out-Null   # no console on stdin: no folder trust question

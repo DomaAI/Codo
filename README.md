@@ -82,7 +82,7 @@ codo
 | Area | What Codo does | Command |
 | --- | --- | --- |
 | Conversation | Interactive session, one shot task, resume, print mode for scripts with JSON output | `codo`, `codo "task"`, `codo -c`, `codo resume`, `codo -p --json` |
-| Browser window | Chat, approvals and file diffs in your browser (Linux and Windows) | `codo ui` |
+| App window | Chat, approvals and file diffs in Codo's own window (Windows and Linux; `--tab` for a browser tab) | `codo ui` |
 | Long work | Works alone for hours or days with a plan, log, queue of goals and hard limits | `codo work`, `codo work add`, `codo work status` |
 | Teams | A lead splits a goal, members work in separate git copies, reviewers check, you approve the plan and the merge, a pull request at the end | `codo team run`, `codo team apply --pr` |
 | Groups of agents | Claude, Codex and Gemini in parallel with a synthesis, split work, cross review, voting, a pipeline or a group chat | `codo group` |
@@ -123,8 +123,9 @@ curl -fsSL https://github.com/DomaAI/Codo/releases/latest/download/install.sh | 
 
 Download [`CodoSetup-x64.exe`](https://github.com/DomaAI/Codo/releases/latest/download/CodoSetup-x64.exe)
 and run it. It installs for your user without administrator rights into
-`%LOCALAPPDATA%\Programs\Codo`, adds `codo` to `PATH`, creates a Start menu shortcut that opens
-the Codo window in your browser, and has a normal uninstaller. Windows 10 and 11, 64 bit.
+`%LOCALAPPDATA%\Programs\Codo`, adds `codo` to `PATH` and has a normal uninstaller. The Start
+menu gets **Codo**, the app in its own window, and **Codo Terminal**, the agent in a terminal.
+Windows 10 and 11, 64 bit.
 
 Or from PowerShell, without downloading an `.exe`:
 
@@ -134,7 +135,7 @@ irm https://github.com/DomaAI/Codo/releases/latest/download/install.ps1 | iex
 
 > Windows 11 Smart App Control and some browsers block programs from publishers they do not know
 > yet. Code signing for the Windows files is on its way. Until then the PowerShell command above
-> works everywhere, because it runs Codo with the signed Python interpreter.
+> works everywhere. After it, `codo ui` opens the Codo window.
 
 The installer downloads `codo` from the latest release, checks its SHA-256 sum against
 `SHA256SUMS` and puts it in `~/.local/bin` (Windows: `%LOCALAPPDATA%\Codo\bin`). You can also download

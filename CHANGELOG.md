@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.29.2
+
+### Codo in its own window on Windows and Linux
+
+- `codo ui` now opens Codo as an app window (Microsoft Edge on Windows, Edge, Chrome or Chromium on Linux) with its own icon on the taskbar, instead of a browser tab. `codo ui --tab` keeps the old behaviour. If no such browser is found, Codo opens in your default browser as before.
+- Windows installer: **Codo** in the Start menu opens the app window in `~/Codo`, **Codo Terminal** opens the agent in a terminal.
+- `codo okno` (also `codo window`) starts the app window the same way as the Start menu shortcut.
+- The PowerShell install (`irm …/install.ps1 | iex`) also adds **Codo** to the Start menu.
+- The double click messages are now in English too.
+
 ## 0.29.1
 
 ### Windows

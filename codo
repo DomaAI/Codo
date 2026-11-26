@@ -49,7 +49,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VERSION = "0.29.1"
+VERSION = "0.29.2"
 APP_NAME = "Codo"                # marka; komenda: codo (dawne: domaai, doma, domaai-code)
 PROJECT_NOTES = "Codo.md"        # pamięć projektu; DOMAAI.md czytany dla zgodności
 API_URL = os.environ.get("DOMA_API_URL", "https://bymadd.pl").rstrip("/")
@@ -27167,7 +27167,7 @@ def _win_double_click() -> int:
         os.chdir(folder)
         print()
         print("  " + bold(f"{APP_NAME} {VERSION}"))
-        print("  " + _L("Codo otwiera się w przeglądarce. Zostaw to okno otwarte, dopóki pracujesz."))
+        print("  " + _L("Codo otwiera się w osobnym oknie. Zostaw to okno terminala otwarte, dopóki pracujesz."))
         print("  " + dim(_Lf("Folder projektów: {0}", str(folder))))
         print("  " + dim(_L("W terminalu wpisz codo, żeby pracować tutaj, w dowolnym folderze.")))
         print()
@@ -27189,6 +27189,8 @@ def main() -> int:
     _apply_lang()
     if not sys.argv[1:] and _win_own_console():
         return _win_double_click()
+    if sys.argv[1:] in (["okno"], ["window"], ["app"]):
+        return _win_double_click()   # skrót „Codo” z menu Start: okno aplikacji w ~/Codo
     if sys.argv[1:2] and sys.argv[1] in ("team", "zespol", "zespół"):
         return cmd_team(sys.argv[2:])   # własne flagi (--dir nadzorcy to folder przebiegu, nie cwd)
     if sys.argv[1:2] and sys.argv[1] in ("grupa", "grupy", "group", "groups"):
@@ -27816,12 +27818,60 @@ def _ui_handler(bridge: _UiBridge, token: str, port_ref: list, on_quit):
     return Handler
 
 
+def _app_window_browser() -> str | None:
+    """Edge albo Chrome/Chromium, które otworzą Codo jako osobne okno aplikacji (bez pasków przeglądarki).
+    Windows: Edge jest w każdym Windows 10 i 11. Linux: pierwszy znaleziony Chromium. Mac ma natywną aplikację."""
+    if os.environ.get("CODO_UI_TAB"):
+        return None
+    if IS_WIN:
+        roots = [os.environ.get(k) for k in ("ProgramFiles(x86)", "ProgramFiles", "LOCALAPPDATA")]
+        rels = (r"Microsoft\Edge\Application\msedge.exe", r"Google\Chrome\Application\chrome.exe")
+        for rel in rels:
+            for root in roots:
+                if root and Path(root, rel).is_file():
+                    return str(Path(root, rel))
+        return None
+    if sys.platform == "darwin":
+        return None
+    import shutil
+    for name in ("microsoft-edge", "microsoft-edge-stable", "google-chrome", "google-chrome-stable",
+                 "chromium", "chromium-browser", "brave-browser"):
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
+
+
+def _app_window_cmd(exe: str, url: str) -> list:
+    """Osobny profil: okno Codo ma swoją ikonę na pasku zadań i nie miesza się z kartami użytkownika."""
+    if IS_WIN:
+        base = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "Codo" / "okno"
+    else:
+        base = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "codo" / "okno"
+    return [exe, f"--app={url}", f"--user-data-dir={base}", "--no-first-run", "--no-default-browser-check",
+            "--window-size=1280,860", "--disable-features=Translate"]
+
+
+def _open_app_window(url: str) -> bool:
+    exe = _app_window_browser()
+    if not exe:
+        return False
+    try:
+        flags = 0x08000000 if IS_WIN else 0   # CREATE_NO_WINDOW
+        subprocess.Popen(_app_window_cmd(exe, url), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, creationflags=flags, start_new_session=not IS_WIN)
+        return True
+    except OSError:
+        return False
+
+
 def codo_ui(args: list, model: str | None) -> int:
     """codo ui [folder] [--no-browser] [--port N]: okno Codo w przeglądarce (Windows, Linux, Mac)."""
     import secrets
     import time as _time
     from http.server import ThreadingHTTPServer
     no_browser = "--no-browser" in args
+    as_tab = "--tab" in args or "--karta" in args
     port = 0
     rest = []
     i = 0
@@ -27835,7 +27885,7 @@ def codo_ui(args: list, model: str | None) -> int:
             port = int(val)
             i += 2
             continue
-        if a != "--no-browser":
+        if a not in ("--no-browser", "--tab", "--karta"):
             if a.startswith("-"):
                 print(red(_Lf('✗ Nieznana opcja {0}', a)) + dim(_L("  (codo help)")))
                 return 2
@@ -27883,7 +27933,7 @@ def codo_ui(args: list, model: str | None) -> int:
                     and not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
         if headless:
             print(dim(_L("  Brak ekranu graficznego: otwórz adres w przeglądarce na tym komputerze.")), flush=True)
-        else:
+        elif as_tab or not _open_app_window(url):
             import webbrowser
             threading.Thread(target=lambda: webbrowser.open(url), daemon=True).start()
 
@@ -29231,6 +29281,15 @@ _EN.update({
     "Logowanie tą metodą jest chwilowo wyłączone. Zaloguj się kodem z maila.": "This way of signing in is off for now. Sign in with the code from your email.",
     "Logowanie wygasło albo zostało odrzucone. Spróbuj jeszcze raz.": "The sign in expired or was rejected. Try again.",
     "Minęło za dużo czasu. Spróbuj jeszcze raz.": "Too much time has passed. Try again.",
+})
+
+# Okno Codo na Windows i Linuksie (26.11.2026).
+_EN.update({
+    "Codo otwiera się w osobnym oknie. Zostaw to okno terminala otwarte, dopóki pracujesz.": "Codo opens in its own window. Keep this terminal window open while you work.",
+    "Folder projektów: {0}": "Projects folder: {0}",
+    "W terminalu wpisz codo, żeby pracować tutaj, w dowolnym folderze.": "Type codo in a terminal to work in any folder.",
+    "✗ Nie udało się uruchomić Codo: {0}": "✗ Codo could not start: {0}",
+    "Naciśnij Enter, żeby zamknąć to okno.": "Press Enter to close this window.",
 })
 
 # Konto z okna (logowanie kodem z maila, 23.11.2026).

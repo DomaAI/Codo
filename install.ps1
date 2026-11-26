@@ -318,6 +318,25 @@ if ($OldVer -and $OldVer -ne $NewVer) { Ok ((T "Zaktualizowano: " "Updated: ") +
 elseif ($OldVer)                      { Ok ((T "Przeinstalowano " "Reinstalled ") + "$NewVer ($BinDir)") }
 else                                  { Ok ((T "Zainstalowano Codo " "Installed Codo ") + "$NewVer ($BinDir)") }
 
+# ---- Skrot "Codo" w menu Start: okno aplikacji (codo okno), jak po instalatorze .exe ----
+if ($ScriptName -eq "codo.py" -and -not $env:CODO_NO_SHORTCUT) {
+    try {
+        $programs = [Environment]::GetFolderPath("Programs")
+        $ico = Join-Path $BinDir "codo.ico"
+        try { Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/DomaAI/Codo/main/assets/codo.ico" -OutFile $ico -TimeoutSec 20 } catch {}
+        $sh = New-Object -ComObject WScript.Shell
+        $lnk = $sh.CreateShortcut((Join-Path $programs "Codo.lnk"))
+        $lnk.TargetPath = $Python
+        $lnk.Arguments = "`"$Script`" okno"
+        $lnk.WorkingDirectory = $HOME
+        $lnk.WindowStyle = 7
+        $lnk.Description = "Codo"
+        if (Test-Path -LiteralPath $ico) { $lnk.IconLocation = "$ico,0" }
+        $lnk.Save()
+        Ok (T "Skrot Codo w menu Start: otwiera okno Codo" "Codo shortcut in the Start menu: opens the Codo window")
+    } catch { Note (T "Nie udalo sie dodac skrotu w menu Start (codo ui dziala z terminala)." "Could not add the Start menu shortcut (codo ui works from a terminal).") }
+}
+
 # ---- Narzedzia zalecane: git i ripgrep ----------------------------------------
 # Codo dziala bez nich, ale z gitem widzi zmiany w repozytorium (i ma bash do
 # polecen), a z ripgrep szuka w kodzie wielokrotnie szybciej.

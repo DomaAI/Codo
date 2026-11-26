@@ -87,11 +87,14 @@ Source: "{#SourceExe}"; DestDir: "{app}"; DestName: "codo.exe"; Flags: ignorever
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Codo"; Filename: "{app}\codo.exe"; WorkingDir: "{%USERPROFILE}"; Comment: "Codo"
-Name: "{autodesktop}\Codo"; Filename: "{app}\codo.exe"; WorkingDir: "{%USERPROFILE}"; Tasks: desktopicon
+; "Codo": the app window (Edge/Chrome app mode), the console starts minimized
+Name: "{autoprograms}\Codo"; Filename: "{app}\codo.exe"; Parameters: "okno"; WorkingDir: "{%USERPROFILE}"; Comment: "Codo"; Flags: runminimized
+; "Codo Terminal": the agent in a terminal, like on Linux and macOS
+Name: "{autoprograms}\Codo Terminal"; Filename: "{cmd}"; Parameters: "/k ""{app}\codo.exe"""; WorkingDir: "{%USERPROFILE}"; IconFilename: "{app}\codo.exe"; Comment: "Codo in a terminal"
+Name: "{autodesktop}\Codo"; Filename: "{app}\codo.exe"; Parameters: "okno"; WorkingDir: "{%USERPROFILE}"; Flags: runminimized; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\codo.exe"; WorkingDir: "{%USERPROFILE}"; Description: "{cm:LaunchProgram,Codo}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\codo.exe"; Parameters: "okno"; WorkingDir: "{%USERPROFILE}"; Description: "{cm:LaunchProgram,Codo}"; Flags: nowait postinstall skipifsilent runminimized
 
 [Code]
 const EnvKey = 'Environment';
