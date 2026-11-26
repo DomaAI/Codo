@@ -1,4 +1,8 @@
-# Codo
+<p align="center">
+  <img src="assets/logo.png" width="128" height="128" alt="Codo">
+</p>
+
+<h1 align="center">Codo</h1>
 
 **One terminal agent on top of every model and coding agent you already pay for.**
 Claude Code, Codex, Gemini CLI, 20+ ACP agents, any OpenAI compatible API or a local model:
