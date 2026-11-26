@@ -2,6 +2,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    branches: ["win-installer"]   # test builds without a release
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
@@ -25,7 +27,29 @@ jobs:
         run: |
           python -m pip install --quiet pyinstaller certifi
           cp codo codo_main.py
-          pyinstaller --onefile --name codo --collect-data certifi --hidden-import certifi codo_main.py
+          extra=()
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            # Icon and file details (Properties > Details in Explorer) for codo.exe
+            ver="$(sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' codo | head -1)"
+            IFS=. read -r a b c <<< "$ver"
+            cat > version.txt <<VER
+          VSVersionInfo(
+            ffi=FixedFileInfo(filevers=($a, $b, ${c:-0}, 0), prodvers=($a, $b, ${c:-0}, 0)),
+            kids=[StringFileInfo([StringTable('040904B0', [
+              StringStruct('CompanyName', 'MADD'),
+              StringStruct('FileDescription', 'Codo'),
+              StringStruct('FileVersion', '$ver'),
+              StringStruct('InternalName', 'codo'),
+              StringStruct('LegalCopyright', 'Copyright (C) 2026 MADD. Apache-2.0'),
+              StringStruct('OriginalFilename', 'codo.exe'),
+              StringStruct('ProductName', 'Codo'),
+              StringStruct('ProductVersion', '$ver')])]),
+              VarFileInfo([VarStruct('Translation', [1033, 1200])])]
+          )
+          VER
+            extra=(--icon assets/codo.ico --version-file version.txt)
+          fi
+          pyinstaller --onefile --name codo --collect-data certifi --hidden-import certifi "${extra[@]}" codo_main.py
           mkdir -p out
           if [ -f dist/codo.exe ]; then cp dist/codo.exe "out/${{ matrix.name }}"; else cp dist/codo "out/${{ matrix.name }}"; fi
       - name: Smoke test
@@ -33,10 +57,54 @@ jobs:
         run: ./out/${{ matrix.name }} --version
       - uses: actions/upload-artifact@v4
         with: { name: "${{ matrix.name }}", path: "out/${{ matrix.name }}" }
+      - name: Build the Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress | Out-Null
+          $ver = (Select-String -Path codo -Pattern '^VERSION = "([^"]+)"').Matches[0].Groups[1].Value
+          Copy-Item dist/codo.exe out/codo.exe
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$ver" "/DSourceExe=..\out\codo.exe" installer\codo.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Get-Item out/CodoSetup-x64.exe | Format-List Name, Length
+      - name: Test the Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath out/CodoSetup-x64.exe -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/LOG=out\setup.log' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Get-Content out\setup.log -Tail 40; throw "setup exit $($p.ExitCode)" }
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Codo\codo.exe'
+          if (-not (Test-Path $exe)) { throw "codo.exe not installed" }
+          & $exe --version
+          if ($LASTEXITCODE -ne 0) { throw "codo --version failed" }
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+          if ($userPath -notlike "*Programs\Codo*") { throw "PATH not updated: $userPath" }
+          $lnk = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Codo.lnk'
+          if (-not (Test-Path $lnk)) { throw "Start menu shortcut missing" }
+          # The browser window: codo ui must start its server (it used to crash in the single file).
+          $work = Join-Path $env:RUNNER_TEMP 'codo-ui'; New-Item -ItemType Directory -Force $work | Out-Null
+          $ui = Start-Process -FilePath $exe -ArgumentList 'ui','--no-browser','--port','8765' -WorkingDirectory $work -PassThru -RedirectStandardOutput out\ui.out -RedirectStandardError out\ui.err
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+            Start-Sleep -Milliseconds 500
+            try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 2 http://127.0.0.1:8765/ | Out-Null; $ok = $true }
+            catch { if ($_.Exception.Response) { $ok = $true } }
+          }
+          Get-Content out\ui.out, out\ui.err -ErrorAction SilentlyContinue
+          if (-not $ui.HasExited) { Stop-Process -Id $ui.Id -Force }
+          if (-not $ok) { throw "codo ui did not answer on 127.0.0.1:8765" }
+          $u = Start-Process -FilePath (Join-Path $env:LOCALAPPDATA 'Programs\Codo\unins000.exe') -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait -PassThru
+          Start-Sleep -Seconds 2
+          if (Test-Path $exe) { throw "uninstall left codo.exe" }
+          if ([Environment]::GetEnvironmentVariable('Path', 'User') -like "*Programs\Codo*") { throw "uninstall left PATH entry" }
+          "installer OK"
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with: { name: "CodoSetup-x64.exe", path: "out/CodoSetup-x64.exe" }
 
   release:
     needs: binaries
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,6 +120,7 @@ jobs:
           cp codo install.sh install.ps1 dist/
           cp bins/* dist/
           chmod +x dist/codo-linux-* dist/codo-macos-* || true
+          ls -la dist
           cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - name: Release notes
         run: |
@@ -62,7 +131,8 @@ jobs:
 
           | System | File |
           |---|---|
-          | Windows 10/11 (x64) | `codo-windows-x64.exe` |
+          | Windows 10/11 (x64), installer | `CodoSetup-x64.exe` |
+          | Windows 10/11 (x64), single file | `codo-windows-x64.exe` |
           | Linux x64 | `codo-linux-x64` |
           | Linux ARM64 | `codo-linux-arm64` |
           | macOS Apple Silicon | `codo-macos-arm64` |
