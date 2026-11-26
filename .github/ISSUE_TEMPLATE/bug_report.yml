@@ -1,0 +1,40 @@
+name: Bug report
+description: Something in Codo does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: version
+    attributes:
+      label: Codo version
+      description: Output of `codo version`
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, Windows]
+    validations:
+      required: true
+  - type: input
+    id: backend
+    attributes:
+      label: Model or agent
+      description: For example agent:claude, @openai/<model>, MaddLabs, Ollama
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `codo doctor`
+      description: Remove anything you do not want to share.
+      render: text

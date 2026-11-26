@@ -1,0 +1,125 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, python: "3.9" }    # oldest supported; newer runner images no longer carry it
+          - { os: ubuntu-latest, python: "3.13" }
+          - { os: macos-latest, python: "3.13" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Compile
+        run: python -m py_compile codo
+      - name: Tests (no network, no model providers)
+        env:
+          CODO_FILE: ${{ github.workspace }}/codo
+          CODO_LANG: pl   # tests check the Polish source strings
+        run: |
+          export HOME="$RUNNER_TEMP/home" DOMA_CONFIG_DIR="$RUNNER_TEMP/home/.config/doma"
+          mkdir -p "$DOMA_CONFIG_DIR"
+          python -m unittest discover -s tests -v
+      - name: Installer syntax
+        run: bash -n install.sh && /bin/bash -n install.sh
+  # The real installers, on systems that have no Python at all.
+  install-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:12-slim
+            prep: apt-get update -qq && apt-get install -y -qq curl ca-certificates
+          - image: ubuntu:24.04
+            prep: apt-get update -qq && apt-get install -y -qq curl ca-certificates
+          - image: fedora:latest
+            prep: "true"
+          - image: archlinux:latest
+            prep: "true"
+          - image: alpine:latest
+            prep: apk add --no-cache bash curl
+          - image: opensuse/tumbleweed:latest
+            prep: zypper --non-interactive --quiet install curl gawk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release files
+        run: mkdir dist && cp codo dist/ && (cd dist && sha256sum codo > SHA256SUMS)
+      - name: Install as root (system package manager)
+        run: |
+          docker run --rm -v "$PWD:/src:ro" -e CODO_BASE_URL=file:///src/dist -e CODO_LANG=en ${{ matrix.image }} sh -c '
+            set -e
+            ${{ matrix.prep }}
+            ! command -v python3 || { echo "image already has python3, test proves nothing"; }
+            bash /src/install.sh
+            export PATH="$HOME/.local/bin:$PATH"
+            codo version
+            command -v git && command -v rg
+            codo doctor | tee /tmp/doctor.txt || true
+            grep -q "TLS certificates" /tmp/doctor.txt'
+  install-linux-no-root:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release files
+        run: mkdir dist && cp codo dist/ && (cd dist && sha256sum codo > SHA256SUMS)
+      - name: Install without root and without Python (private copy through uv)
+        run: |
+          docker run --rm --user 1000:1000 -e HOME=/tmp/home -v "$PWD:/src:ro" \
+            -e CODO_BASE_URL=file:///src/dist -e CODO_LANG=en buildpack-deps:bookworm-curl sh -c '
+            set -e
+            mkdir -p "$HOME"
+            ! command -v python3
+            bash /src/install.sh
+            head -n 1 "$HOME/.local/bin/codo"
+            "$HOME/.local/bin/codo" version
+            "$HOME/.local/bin/codo" doctor | tee /tmp/doctor.txt || true
+            grep -q "TLS certificates" /tmp/doctor.txt
+            grep -q "Connection to" /tmp/doctor.txt'
+  install-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install with the system bash 3.2
+        run: |
+          mkdir dist && cp codo dist/ && (cd dist && shasum -a 256 codo > SHA256SUMS)
+          export HOME="$RUNNER_TEMP/home"; mkdir -p "$HOME"
+          CODO_NO_DEPS=1 CODO_BASE_URL="file://$PWD/dist" /bin/bash install.sh
+          "$HOME/.local/bin/codo" version
+          grep -q '.local/bin' "$HOME/.zshrc" || grep -q '.local/bin' "$HOME/.bash_profile"
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m py_compile codo
+      - run: python codo version
+      - name: Output redirected to a file must not crash (ANSI code page)
+        shell: cmd
+        run: |
+          python codo help > help.txt
+          python codo doctor > doctor.txt & type doctor.txt
+      - name: Browser window (codo ui) under PowerShell 7
+        shell: pwsh
+        run: .\.github\ci\windows-ui.ps1
+      - name: Browser window (codo ui) under Windows PowerShell 5.1
+        shell: powershell
+        run: .\.github\ci\windows-ui.ps1
+      - name: Installer under Windows PowerShell 5.1
+        shell: powershell
+        run: .\.github\ci\windows-install.ps1 -Name "codo bin 51"
+      - name: Installer under PowerShell 7
+        shell: pwsh
+        run: .\.github\ci\windows-install.ps1 -Name "codo bin 7"

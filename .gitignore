@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.doma/
+.codo/
+.DS_Store
+dist/

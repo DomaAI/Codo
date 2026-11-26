@@ -1,0 +1,27 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        run: |
+          file_ver="$(sed -n 's/^VERSION = "\([^"]*\)".*/\1/p' codo | head -1)"
+          [ "v$file_ver" = "$GITHUB_REF_NAME" ] || { echo "Tag $GITHUB_REF_NAME does not match VERSION $file_ver"; exit 1; }
+      - name: Build assets
+        run: |
+          mkdir dist
+          cp codo install.sh install.ps1 dist/
+          cd dist && sha256sum codo install.sh install.ps1 > SHA256SUMS && cat SHA256SUMS
+      - name: Release notes
+        run: |
+          awk -v v="${GITHUB_REF_NAME#v}" '$0 == "## " v {on=1; next} /^## / && on {exit} on' CHANGELOG.md > notes.md
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Codo $GITHUB_REF_NAME" --notes-file notes.md --draft
