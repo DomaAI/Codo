@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="264" height="64" viewBox="0 0 264 64" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif">
+<rect x="0.5" y="0.5" width="263" height="63" rx="14" fill="#111111"/>
+<g transform="translate(22 19) scale(1.08)" fill="#ffffff"><path d="M0 3.45 9.75 2.1v9.45H0zm10.95-1.5L24 0v11.4H10.95zM0 12.6h9.75v9.45L0 20.7zm10.95.15H24V24l-13.05-1.8z"/></g>
+<text x="64" y="29" font-size="16" font-weight="600" fill="#ffffff">Download for Windows</text>
+<text x="64" y="47" font-size="12.5" fill="#b8b8b8">Windows 10 and 11, 64 bit</text>
+</svg>

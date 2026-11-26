@@ -1,31 +1,66 @@
 <p align="center">
-  <img src="assets/agents.png" width="720" alt="Codo and its crew: Josh, Luna, Codo, Max and Mia">
+  <img src="assets/agents.png" width="560" alt="Codo and its crew: Josh, Luna, Codo, Max and Mia">
 </p>
 
 <h1 align="center">Codo</h1>
 
-**One terminal agent on top of every model and coding agent you already pay for.**
-Claude Code, Codex, Gemini CLI, 20+ ACP agents, any OpenAI compatible API or a local model:
-Codo drives them all from one session, and when one hits its plan limit the same conversation
-keeps going on the next one.
+<p align="center">
+  <b>Your team of AI agents, on the plans you already pay for.</b><br>
+  Claude Code, Codex, Gemini CLI, any API or a local model in one app and one terminal.<br>
+  When one plan hits its limit, the same conversation keeps going on the next one.
+</p>
 
-[![CI](https://github.com/DomaAI/Codo/actions/workflows/ci.yml/badge.svg)](https://github.com/DomaAI/Codo/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/DomaAI/Codo?label=release&color=blue)](https://github.com/DomaAI/Codo/releases/latest)
-[![License](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
-![Linux | macOS | Windows](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey)
+<p align="center">
+  <a href="https://bymadd.pl/static/codo/mac/Codo.dmg"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/buttons/mac-dark.svg"><img src="assets/buttons/mac-light.svg" height="56" alt="Download for macOS"></picture></a>
+  <a href="https://github.com/DomaAI/Codo/releases/latest/download/CodoSetup-x64.exe"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/buttons/win-dark.svg"><img src="assets/buttons/win-light.svg" height="56" alt="Download for Windows"></picture></a>
+  <a href="#get-codo"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/buttons/linux-dark.svg"><img src="assets/buttons/linux-light.svg" height="56" alt="Install on Linux"></picture></a>
+</p>
 
-```bash
-curl -fsSL https://github.com/DomaAI/Codo/releases/latest/download/install.sh | bash
-codo
-```
+<p align="center">
+  <a href="https://domaai.pl/pobierz-codo.html"><b>Download page</b></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#screenshots">Screenshots</a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#how-codo-compares">Compare</a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="https://github.com/DomaAI/Codo/releases">Releases</a>
+</p>
 
-Windows: [`CodoSetup-x64.exe`](https://github.com/DomaAI/Codo/releases/latest/download/CodoSetup-x64.exe) or
-`irm https://github.com/DomaAI/Codo/releases/latest/download/install.ps1 | iex`, then `codo ui` opens the app.
+<p align="center">
+  <a href="https://github.com/DomaAI/Codo/actions/workflows/ci.yml"><img src="https://github.com/DomaAI/Codo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="macOS, Windows, Linux">
+</p>
 
 <p align="center">
   <img src="assets/screens/mac-main.webp" width="900" alt="Codo app: agents Luna, Max, Josh and Mia in the sidebar, Claude Code as the brain">
 </p>
+
+## Get Codo
+
+**macOS** 15 or newer, Apple Silicon and Intel. A native app, signed and notarized by Apple, that updates itself.
+[Download Codo.dmg](https://bymadd.pl/static/codo/mac/Codo.dmg)
+
+**Windows** 10 and 11, 64 bit. Installs for your user without administrator rights; the Start menu gets
+**Codo** (the app) and **Codo Terminal**.
+[Download CodoSetup-x64.exe](https://github.com/DomaAI/Codo/releases/latest/download/CodoSetup-x64.exe), or in PowerShell:
+
+```powershell
+irm https://github.com/DomaAI/Codo/releases/latest/download/install.ps1 | iex
+```
+
+**Linux** x64 and arm64, and macOS from the terminal:
+
+```bash
+curl -fsSL https://github.com/DomaAI/Codo/releases/latest/download/install.sh | bash
+codo ui     # the app in its own window
+codo        # the agent in your terminal
+```
+
+Step by step help for every system: **[domaai.pl/pobierz-codo](https://domaai.pl/pobierz-codo.html)**
 
 ## Use the plans you already pay for
 
