@@ -353,7 +353,7 @@ class AppServerUmiejetnosciTests(unittest.TestCase):
             proc.stdin.flush()
             ev = wait_for("own_skills")
             self.assertEqual([(x["id"], x["uses"], x["enabled"]) for x in ev["items"]], [("projekt:demo", 2, True)])
-            self.assertTrue(ev["project_dir"].endswith(".codo/skills"))
+            self.assertEqual(Path(ev["project_dir"]).parts[-2:], (".codo", "skills"))   # ścieżka systemowa (na Windows z odwrotnym ukośnikiem)
             proc.stdin.write(json.dumps({"type": "own_skill", "id": "projekt:demo", "action": "off"}) + "\n")
             proc.stdin.flush()
             ev = wait_for("own_skills", 2)

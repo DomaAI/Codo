@@ -947,7 +947,7 @@ class PrIKanalTests(unittest.TestCase):
             ev = cli.team_apply(run_dir, "pr")
         self.assertIn("gh", ev["detail"])
         log = self.root / "gh.log"
-        gh = atrapa(self.root, "gh", "import sys\n"
+        gh = atrapa(self.root, "gh", exe=True, code="import sys\n"
                     f"with open({str(log)!r}, 'a', encoding='utf-8') as f:\n"
                     "    f.write(' '.join(sys.argv[1:]) + '\\n')\n"
                     "if sys.argv[1:2] == ['pr']:\n"

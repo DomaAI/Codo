@@ -116,7 +116,7 @@ class GoogleTests(unittest.TestCase):
             {"jsonrpc": "2.0", "id": 2, "method": "tools/list"},
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "dysk", "arguments": {"akcja": "lista"}}},
         )) + "\n"
-        env = {**os.environ, "HOME": str(self.home), "DOMA_CONFIG_DIR": str(self.home / "cfg")}
+        env = {**os.environ, "HOME": str(self.home), "USERPROFILE": str(self.home), "DOMA_CONFIG_DIR": str(self.home / "cfg")}   # Windows: Path.home() = USERPROFILE
         r = subprocess.run([sys.executable, SCRIPT, "mcp"], input=wejscie, capture_output=True, text=True, env=env, timeout=60, encoding="utf-8")
         linie = [json.loads(x) for x in r.stdout.splitlines()]
         self.assertEqual([m["id"] for m in linie], [1, 2, 3])

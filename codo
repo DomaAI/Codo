@@ -18011,6 +18011,32 @@ def _agent_bin(kind: str) -> str | None:
     return None
 
 
+_SHIM_RE = re.compile(r'"([^"]+)"\s+"%(?:dp0%|~dp0)\\?([^"]+)"\s+%\*')
+
+
+def _win_unshim(argv: list) -> list:
+    """Windows: shim .cmd (npm instaluje claude.cmd, codex.cmd, gemini.cmd) uruchamiany wprost jako node + skrypt.
+    Przez .cmd argumenty idą przez cmd.exe: wieloliniowy --append-system-prompt urywał się na pierwszym końcu
+    linii (persona agenta nie docierała), a %, ^, & i | w treści cmd.exe interpretował po swojemu."""
+    if not IS_WIN or not argv or not str(argv[0]).lower().endswith((".cmd", ".bat")):
+        return argv
+    import shutil
+    shim = Path(argv[0])
+    try:
+        m = _SHIM_RE.search(shim.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return argv
+    if not m:
+        return argv
+    prog, script = m.group(1), shim.parent / m.group(2).lstrip("\\/")
+    if prog == "%_prog%":   # npm cmd-shim: node.exe obok shima albo node z PATH
+        local = shim.parent / "node.exe"
+        prog = str(local) if local.is_file() else (shutil.which("node") or "")
+    if not prog or "%" in prog or not script.is_file():
+        return argv
+    return [prog, str(script), *[str(a) for a in argv[1:]]]
+
+
 def agents_available() -> list:
     """Wykryte agenty: [(kind, ścieżka)] w stałej kolejności."""
     if load_settings().get("agents_off"):
@@ -18020,7 +18046,7 @@ def agents_available() -> list:
 
 def _agent_version(path: str) -> str:
     try:
-        out = subprocess.run([path, "--version"], capture_output=True, text=True, timeout=8,
+        out = subprocess.run(_win_unshim([path, "--version"]), capture_output=True, text=True, timeout=8,
                              stdin=subprocess.DEVNULL).stdout.strip()
     except (OSError, subprocess.SubprocessError):
         return ""
@@ -18516,6 +18542,7 @@ def run_external_agent(kind: str, prompt: str, mode: str, auto_yes: bool, sid: s
         run.errors.append(_Lf('Nie znaleziono {0}. Instalacja: {1}', _AGENTS[kind]['label'], _AGENTS[kind]['install']))
         return run
     argv, stdin_text = _agent_argv(kind, path, mode, auto_yes, sid, prompt)
+    argv = _win_unshim(argv)
     env = dict(os.environ)
     env.pop("CLAUDECODE", None)   # zagnieżdżone uruchomienie z wnętrza innej sesji
     env.setdefault("NO_COLOR", "1")
@@ -19413,7 +19440,7 @@ def run_acp_agent(kind: str, prompt: str, mode: str, auto_yes: bool, sid: str | 
     if not path:
         run.errors.append(_Lf('Nie znaleziono {0}. Instalacja: {1}', info['label'], info['install']))
         return run
-    argv = [path] + list(info["acp"])
+    argv = _win_unshim([path] + list(info["acp"]))
     env = dict(os.environ)
     env.pop("CLAUDECODE", None)
     env.setdefault("NO_COLOR", "1")

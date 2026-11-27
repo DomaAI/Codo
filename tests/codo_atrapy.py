@@ -12,10 +12,31 @@ from pathlib import Path
 IS_WIN = os.name == "nt"
 
 
-def atrapa(folder, name: str, code: str) -> Path:
-    """Program `name` w `folder` wykonujący kod Pythona `code`. Zwraca ścieżkę do uruchamiania."""
+def _launcher_exe():
+    """Windows: launcher pip/distlib (ten sam, z którego powstają pip.exe i inne programy z konsoli)."""
+    try:
+        import pip._vendor.distlib as d
+    except ImportError:
+        return None
+    f = Path(d.__file__).parent / ("t64.exe" if sys.maxsize > 2 ** 32 else "t32.exe")
+    return f if f.is_file() else None
+
+
+def atrapa(folder, name: str, code: str, exe: bool = False) -> Path:
+    """Program `name` w `folder` wykonujący kod Pythona `code`. Zwraca ścieżkę do uruchamiania.
+    Windows: domyślnie NAZWA.cmd jak shim npm (claude.cmd, codex.cmd); exe=True daje prawdziwy NAZWA.exe
+    (launcher distlib, jak gh.exe), który dostaje argumenty bez pośrednictwa cmd.exe."""
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
+    if IS_WIN and exe and _launcher_exe():
+        import io as _io
+        import zipfile
+        buf = _io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("__main__.py", code)
+        out = folder / f"{name}.exe"
+        out.write_bytes(_launcher_exe().read_bytes() + f'#!"{sys.executable}"\r\n'.encode("utf-8") + buf.getvalue())
+        return out
     if IS_WIN:
         script = folder / f"{name}.py"
         script.write_text(code, encoding="utf-8")
@@ -196,3 +217,18 @@ def jako_unittest(module_globals):
         standard_tests.addTests(loader.loadTestsFromTestCase(case))
         return standard_tests
     return load_tests
+
+
+def sprzataj(tmp, sekundy: float = 15.0) -> None:
+    """TemporaryDirectory.cleanup() z ponowieniem na Windows: katalog bywa jeszcze zajęty przez proces potomny,
+    który właśnie się kończy (WinError 32). Proces, który nie zniknie w tym czasie, wywraca test jak wcześniej."""
+    import time
+    end = time.monotonic() + (sekundy if IS_WIN else 0)
+    while True:
+        try:
+            tmp.cleanup()
+            return
+        except PermissionError:
+            if time.monotonic() > end:
+                raise
+            time.sleep(0.5)

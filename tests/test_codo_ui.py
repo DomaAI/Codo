@@ -21,7 +21,7 @@ from pathlib import Path
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from codo_atrapy import atrapa  # noqa: E402
+from codo_atrapy import atrapa, sprzataj  # noqa: E402
 
 SCRIPT = str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma"))
 
@@ -315,7 +315,7 @@ class CodoUiTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.proj = self.root / "projekt"
         self.proj.mkdir()
-        (self.proj / "app.py").write_text("x = 1\n", encoding="utf-8")
+        (self.proj / "app.py").write_bytes(b"x = 1\n")   # bajty: write_text na Windows zapisałby CRLF
         self.env = make_env(self.root, self.model_url)
         self.p = None
 
@@ -334,7 +334,7 @@ class CodoUiTests(unittest.TestCase):
                     s.close()
                 except (OSError, ValueError):
                     pass
-        self.tmp.cleanup()
+        sprzataj(self.tmp)
 
     def _start(self, *extra, **env):
         self.env.update(env)
@@ -462,7 +462,7 @@ class CodoUiTests(unittest.TestCase):
                                {"name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": ""},
                                {"name": "build", "status": "IN_PROGRESS", "conclusion": ""},
                                {"context": "ci/stary", "state": "SKIPPED"}]})
-        atrapa(bin_dir, "gh", "import sys\n"
+        atrapa(bin_dir, "gh", exe=True, code="import sys\n"
                "a = sys.argv[1:]\n"
                f"with open({str(log)!r}, 'a', encoding='utf-8') as f:\n"
                "    f.write(' '.join(a) + '\\n')\n"
@@ -503,7 +503,7 @@ class CodoUiTests(unittest.TestCase):
     def test_zmiany_bez_gita_z_kopii(self):
         """Bez gita: „przed” = kopia w .doma/backups, przyjęcie zapisuje wersję odniesienia, nowy plik z silnika."""
         (self.proj / ".doma" / "backups").mkdir(parents=True)
-        (self.proj / ".doma" / "backups" / "app.py.20261127-100000.bak").write_text("x = 0\n", encoding="utf-8")
+        (self.proj / ".doma" / "backups" / "app.py.20261127-100000.bak").write_bytes(b"x = 0\n")
         (self.proj / "nowy.md").write_text("# Nowy\n", encoding="utf-8")
         c = self._start()
         st, body, _ = c.req("GET", "/api/changes/list?extra=nowy.md")
