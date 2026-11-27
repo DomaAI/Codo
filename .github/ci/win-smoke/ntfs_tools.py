@@ -9,6 +9,8 @@ import os
 import shutil
 import subprocess
 import sys
+for _s in (sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")  # runner console is cp1252
 import tempfile
 import time
 import traceback
