@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.30.5
+
+### Sign in, live agent faces and every provider logo on Windows and Linux
+
+- **Sign in on first start, like on Mac.** Codo opens on a full window sign in to your DomaAI account: email, a 6 digit code from your inbox (two step codes and backup codes too), new terms, your first name for a new account. Then "How will you use Codo?" (just me or for a company) and the agent creator. The same account as `codo login`.
+- **Agent faces drawn live.** The glass, the liquid and the eyes are rendered in the window with the same shader as on Mac. Up to five colours mix inside, the eye colour changes, faces blink, look around and react. Every change in the creator shows at once, and every list shows each agent's real colours and eyes.
+- **Every provider logo.** One way to tell the maker of a model for the whole window: Mistral, Kimi, GLM, Llama, Bielik, Seed, Groq, OpenRouter, Ollama, LM Studio and models without a prefix (`gpt-5`, `codestral`, `gemini-2.5`). 40 logos, no network.
+- **The window matches the Mac app 1:1.** Accounts on the bar, title bar, projects and the start screen.
+
+### Fixes
+
+- In the creator, the first tap on a colour cleared the liquid instead of adding the colour.
+
 ## 0.30.3
 
 ### Rooms and Compare on Windows and Linux
