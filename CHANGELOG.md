@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.0
+
+### Working with files and on files
+
+- **Files in the conversation.** Attach files, whole folders, a pasted image or a screenshot; drop anything anywhere on the window. Attachment cards show a thumbnail or the file type and size. Type `@` for a list of project files and folders right at the cursor, with fuzzy search. Windows paths, spaces and accents work.
+- **Files in answers are links.** Paths the agent mentions open a preview: code with colours, Markdown, HTML, images, PDF, video. Open in the default app, show in folder, copy the path or download. Files the agent made appear as cards under its answer.
+- **A new Changes panel.** A list or a tree of changed files, unified or side by side diffs with syntax colours, folded unchanged lines and smooth large files. Accept, reject or undo one hunk, a whole file or everything, always with a backup and earlier versions to restore. Comments on lines go back to the agent as one fix. Git: branch, commit, pull request. Keyboard shortcuts (press `?`).
+- **The agent handles files better.** UTF-16, cp1250 and BOM files are read and written back byte for byte, Windows line endings stay. Edits land even with a different indent or typographic quotes, and a miss shows the closest lines. `read_file` reads PDF, DOCX, XLSX, PPTX, ODF and notebooks, and shows images to models that see. Every `/undo` steps back one change, including moves, copies and deletes. Read only files are no longer overwritten; files outside the project need your OK.
+
 ## 0.30.5
 
 ### Sign in, live agent faces and every provider logo on Windows and Linux
