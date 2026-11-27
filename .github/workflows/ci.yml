@@ -23,6 +23,7 @@ jobs:
       - name: Compile
         run: python -m py_compile codo
       - name: Tests (no network, no model providers)
+        timeout-minutes: 20
         env:
           CODO_FILE: ${{ github.workspace }}/codo
           CODO_LANG: pl   # tests check the Polish source strings
@@ -108,6 +109,7 @@ jobs:
       - run: python codo version
       - name: Tests (no network, no model providers)
         if: always()
+        timeout-minutes: 20
         env:
           CODO_FILE: ${{ github.workspace }}\codo
           CODO_LANG: pl   # tests check the Polish source strings
@@ -115,7 +117,7 @@ jobs:
         run: |
           $env:DOMA_CONFIG_DIR = "$env:RUNNER_TEMP\home\.config\doma"
           New-Item -ItemType Directory -Force $env:DOMA_CONFIG_DIR | Out-Null
-          python -m unittest discover -s tests
+          python -m unittest discover -s tests -v
       - name: Output redirected to a file must not crash (ANSI code page)
         shell: cmd
         run: |

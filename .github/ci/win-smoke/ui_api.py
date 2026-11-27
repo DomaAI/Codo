@@ -18,6 +18,10 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+# The runner log is UTF-8; the console code page (cp1252) cannot print Polish paths or the window's text.
+for _s in (sys.stdout, sys.stderr):
+    _s.reconfigure(encoding="utf-8", errors="replace")
+
 CMD = sys.argv[1:] or [sys.executable, "codo"]
 RESULTS = []
 
