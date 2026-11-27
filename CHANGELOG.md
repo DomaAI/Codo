@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.32.1
+
+- **Office documents as text.** Edits to Word, Excel, PowerPoint and OpenDocument files show a real text diff in the conversation card and in the Changes panel, with a format badge. Accept, reject and undo work on the whole file. File preview shows the document with headings, tables, sheets and slides.
+- **Plurals everywhere.** "1 check failed", "2 checks failed" and about 30 other counts follow the rules of each language, including the Polish, Czech, Ukrainian and Romanian forms.
+
 ## 0.32.0
 
 ### Word, Excel and PowerPoint edits, reviews and pull request checks, Windows fixes
