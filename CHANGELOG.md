@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.5
+
+- **The window remembers its layout.** Sidebar and panel widths, folded sections, theme and other window settings are kept in your Codo settings folder, so they come back after you close and reopen the window.
+
 ## 0.32.4
 
 - **The window fits every size.** The Changes panel never squeezes the conversation below a readable width: the sidebar hides first, then the panel narrows, and in a very narrow window it opens over the conversation.
