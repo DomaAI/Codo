@@ -123,3 +123,20 @@ jobs:
       - name: Installer under PowerShell 7
         shell: pwsh
         run: .\.github\ci\windows-install.ps1 -Name "codo bin 7"
+      # Real NTFS and Edge: no account, no model provider (a fake /v1 on 127.0.0.1).
+      - name: Window API (Polish path straight in C:\, git repo with CRLF, upload, preview)
+        if: always()
+        run: python .github/ci/win-smoke/ui_api.py python codo
+      - name: File tools on NTFS (locked by another program, read-only, path over 260, cp1250, CRLF, move)
+        if: always()
+        run: python .github/ci/win-smoke/ntfs_tools.py codo
+      - name: Screenshots of the window in Edge
+        if: always()
+        env:
+          CODO_FILE: ${{ github.workspace }}\codo
+        run: |
+          python -m pip install --quiet playwright
+          python .github/ci/win-smoke/shots.py shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: windows-shots, path: shots/ }

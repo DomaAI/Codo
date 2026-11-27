@@ -70,8 +70,14 @@ class FileTools(InFolder):
 
     def test_edit_near_miss_points_at_lines(self):
         Path("f.py").write_text("def f():\n    return 1\n")
+        # 0.30.5: inne wcięcie przy jednym dopasowaniu = edycja z tolerancją (jak u najlepszych agentów)
         out = cli.t_edit_file({"path": "f.py", "old_string": "def f():\n  return 1", "new_string": "x"})
-        self.assertIn("liniach 1-2", out)
+        self.assertIn("linie 1-2", out)
+        self.assertEqual(Path("f.py").read_text(), "x\n")
+        Path("f.py").write_text("def f():\n    return 1\n")
+        out = cli.t_edit_file({"path": "f.py", "old_string": "def f():\n    return 2", "new_string": "x"})
+        self.assertIn("linie 1-2", out)
+        self.assertIn("Pierwsza różnica w linii 2", out)
 
     def test_delete_symlink_keeps_target(self):
         Path("real.txt").write_text("keep")
