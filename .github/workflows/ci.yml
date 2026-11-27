@@ -1,7 +1,7 @@
 name: CI
 on:
   push:
-    branches: [main]
+    branches: [main, win-tests]
   pull_request:
 permissions:
   contents: read
@@ -106,6 +106,16 @@ jobs:
           python-version: "3.13"
       - run: python -m py_compile codo
       - run: python codo version
+      - name: Tests (no network, no model providers)
+        if: always()
+        env:
+          CODO_FILE: ${{ github.workspace }}\codo
+          CODO_LANG: pl   # tests check the Polish source strings
+        shell: pwsh
+        run: |
+          $env:DOMA_CONFIG_DIR = "$env:RUNNER_TEMP\home\.config\doma"
+          New-Item -ItemType Directory -Force $env:DOMA_CONFIG_DIR | Out-Null
+          python -m unittest discover -s tests
       - name: Output redirected to a file must not crash (ANSI code page)
         shell: cmd
         run: |
