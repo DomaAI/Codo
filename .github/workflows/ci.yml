@@ -111,17 +111,6 @@ jobs:
           python-version: "3.13"
       - run: python -m py_compile codo
       - run: python codo version
-      - name: Tests (no network, no model providers)
-        if: always()
-        timeout-minutes: 20
-        env:
-          CODO_FILE: ${{ github.workspace }}\codo
-          CODO_LANG: pl   # tests check the Polish source strings
-        shell: pwsh
-        run: |
-          $env:DOMA_CONFIG_DIR = "$env:RUNNER_TEMP\home\.config\doma"
-          New-Item -ItemType Directory -Force $env:DOMA_CONFIG_DIR | Out-Null
-          python -m unittest discover -s tests -v
       - name: Output redirected to a file must not crash (ANSI code page)
         shell: cmd
         run: |
@@ -153,6 +142,17 @@ jobs:
         run: |
           python -m pip install --quiet playwright
           python .github/ci/win-smoke/shots.py shots
+      - name: Tests (no network, no model providers)
+        if: always()
+        timeout-minutes: 20
+        env:
+          CODO_FILE: ${{ github.workspace }}\codo
+          CODO_LANG: pl   # tests check the Polish source strings
+        shell: pwsh
+        run: |
+          $env:DOMA_CONFIG_DIR = "$env:RUNNER_TEMP\home\.config\doma"
+          New-Item -ItemType Directory -Force $env:DOMA_CONFIG_DIR | Out-Null
+          python -m unittest discover -s tests -v
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: windows-shots, path: shots/ }

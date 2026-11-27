@@ -1305,7 +1305,11 @@ class WznowienieTests(_ProcesyBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         seq = st.seq()
         ask = self.wait_for(st, lambda e: e["type"] == "team_ask" and e["seq"] > seq)
-        log_b = (run_dir / "log" / "b.jsonl").read_text(encoding="utf-8")
+        for _ in range(50):   # dziennik członka dopisuje osobny wątek nadzorcy, chwilę po zdarzeniu team_ask
+            log_b = (run_dir / "log" / "b.jsonl").read_text(encoding="utf-8")
+            if '"resumed"' in log_b:
+                break
+            time.sleep(0.1)
         self.assertIn('"resumed"', log_b)                             # członek wrócił do swojej rozmowy
         r = self.cli("answer", run_dir.name, ask["ask_id"], "t")
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -1407,7 +1411,7 @@ class AppEtap2Tests(_AppBase):
         self.assertIn("Wynik przyjdzie sam", json.dumps(tool, ensure_ascii=False))
         cfg = Path(self.env["DOMA_CONFIG_DIR"])
         saved = ""
-        for _ in range(40):
+        for _ in range(160):   # wynik zespołu dopisuje się do rozmowy chwilę po team_done (Windows: wolniej)
             saved = "".join(p.read_text(encoding="utf-8") for p in (cfg / "rozmowy").rglob("*.json")
                             if json.loads(p.read_text(encoding="utf-8")).get("cwd") == str(self.proj))
             if "Zespół zakończył pracę" in saved:
@@ -1502,7 +1506,9 @@ class KontraktTests(_AppBase):
                 self.send(type="team_merge_decide", run_id=ev["run_id"], task_id=ev["task_id"], approve=True)
         done = self.wait("team_done", 240, on)
         rid = done["run_id"]
-        self.assertEqual(done["status"], "review_final", json.dumps(done, ensure_ascii=False)[:3000])
+        self.assertEqual(done["status"], "review_final", json.dumps(done, ensure_ascii=False)[:3000] + "\n" + "\n".join(
+            json.dumps({k: e.get(k) for k in ("type", "state", "task_id", "status", "detail", "from", "text")},
+                       ensure_ascii=False)[:300] for e in self.seen[-60:]))
         self.assertEqual(done["source"]["kind"], "chat")
         self.assertTrue(asks, "członek b w trybie ask powinien pytać o polecenie")
         self.assertEqual([t["id"] for t in plans[0]["tasks"]], ["T1", "T2"])
