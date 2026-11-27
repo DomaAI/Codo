@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.32.2
+
+- **Windows fixes.** File search, grep and @ completion return relative paths with forward slashes, also when the working folder has a short 8.3 name. app-server and mcp read stdin as UTF-8. Claude Code and Codex installed through npm get multi-line arguments in full (no more .cmd shims). Team member logs are UTF-8.
+- **app-server exits after its input closes**, even when nobody reads its output any more (at most 10 s, `CODO_APP_EXIT_GRACE`).
+- **Team members resume their own conversation** after the supervisor is killed.
+- **The window starts at once** instead of waiting about 18 s for a reverse DNS lookup.
+- **Tests green on Windows, Linux and macOS** in CI: 495 tests on every push to main.
+
 ## 0.32.1
 
 - **Office documents as text.** Edits to Word, Excel, PowerPoint and OpenDocument files show a real text diff in the conversation card and in the Changes panel, with a format badge. Accept, reject and undo work on the whole file. File preview shows the document with headings, tables, sheets and slides.

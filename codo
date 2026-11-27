@@ -49,7 +49,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-VERSION = "0.32.1"
+VERSION = "0.32.2"
 APP_NAME = "Codo"                # marka; komenda: codo (dawne: domaai, doma, domaai-code)
 PROJECT_NOTES = "Codo.md"        # pamięć projektu; DOMAAI.md czytany dla zgodności
 API_URL = os.environ.get("DOMA_API_URL", "https://bymadd.pl").rstrip("/")
