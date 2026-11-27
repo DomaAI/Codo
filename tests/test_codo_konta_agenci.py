@@ -18,7 +18,7 @@ from unittest.mock import patch
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
+from codo_atrapy import atrapa, zakoncz  # noqa: E402
 
 _CFG = tempfile.mkdtemp(prefix="codo-konta-")
 os.environ["DOMA_CONFIG_DIR"] = _CFG
@@ -473,8 +473,7 @@ class CodoAppServerTests(unittest.TestCase):
             events.append(json.loads(line))
             if events[-1]["type"] == "turn_end":
                 break
-        zamknij_stdin(p)
-        p.wait(10)
+        _, err = zakoncz(p)
         kinds = [e["type"] for e in events]
         for k in ("mode", "turn_start", "delta", "assistant", "tool_start", "tool", "edit", "turn_end"):
             self.assertIn(k, kinds)
@@ -484,7 +483,7 @@ class CodoAppServerTests(unittest.TestCase):
         self.assertTrue(events[-1]["ok"])
         self.assertTrue(events[-1]["convo_id"])
         self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "x = 2\n")
-        self.assertNotIn("Traceback", p.stderr.read())
+        self.assertNotIn("Traceback", err)
 
     def test_ask_waits_for_answer_from_app(self):
         buf = io.StringIO()
@@ -558,8 +557,7 @@ class CodoAgentDomaaiTests(CodoAppServerTests):
             events.append(json.loads(line))
             if events[-1]["type"] == until:
                 break
-        zamknij_stdin(p)
-        p.wait(10)
+        zakoncz(p)
         return events
 
     def test_persona_reaches_external_agent_and_rename_sticks(self):

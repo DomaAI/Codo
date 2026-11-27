@@ -11,7 +11,7 @@ from pathlib import Path
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from codo_atrapy import sprzataj, zamknij_stdin  # noqa: E402
+from codo_atrapy import sprzataj, zakoncz  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -179,9 +179,7 @@ class KsztaltAgentaTests(unittest.TestCase):
                     if out[-1].get("type") == czekaj_na:
                         break
         finally:
-            p.stdin.write(json.dumps({"type": "quit"}) + "\n")
-            zamknij_stdin(p)
-            p.wait(20)
+            zakoncz(p, json.dumps({"type": "quit"}) + "\n")
         return out
 
     def test_ksztalt_zostaje_po_ponownym_uruchomieniu(self):
@@ -268,9 +266,7 @@ class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
                             break
                 finally:
                     if p.poll() is None:
-                        p.stdin.write(json.dumps({"type": "quit"}) + "\n")
-                        zamknij_stdin(p)
-                        p.wait(20)
+                        zakoncz(p, json.dumps({"type": "quit"}) + "\n")
                 self.assertIsNotNone(zapis)
                 self.assertTrue(zapis.get("ok"))
                 self.assertTrue(zapis.get("lokalnie"))
@@ -313,9 +309,7 @@ class WorkflowKanalyTests(unittest.TestCase):
                     if m.get("type") == "workflow" and m.get("state") in ("done", "failed"):
                         break
             finally:
-                p.stdin.write(json.dumps({"type": "quit"}) + "\n")
-                zamknij_stdin(p)
-                p.wait(20)
+                zakoncz(p, json.dumps({"type": "quit"}) + "\n")
             return out, mosty
 
     def test_krok_wyslij_idzie_na_kanal(self):

@@ -18,7 +18,7 @@ from pathlib import Path
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
+from codo_atrapy import atrapa, zakoncz  # noqa: E402
 
 _ROOT = Path(tempfile.mkdtemp(prefix="codo-grupy-")).resolve()
 _HOME = _ROOT / "home"
@@ -518,8 +518,7 @@ class ProcesyTests(unittest.TestCase):
             wait("group_started")
             self.assertTrue((self.cfg / "grupy.json").exists())
         finally:
-            zamknij_stdin(p)
-            p.wait(timeout=20)
+            zakoncz(p)
 
     def test_codo_grupa_w_terminalu(self):
         r = subprocess.run([sys.executable, SCRIPT, "grupa", "nowa", "Para", "agent:codex=Kodeks", "@atrapa/atrapa-1=Konto",

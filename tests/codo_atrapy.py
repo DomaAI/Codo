@@ -55,6 +55,16 @@ def zamknij_stdin(p) -> None:
         p.stdin.close()
 
 
+def zakoncz(p, wejscie: str = "", timeout: float = 20):
+    """Kończy proces potomny: wysyła `wejscie`, zamyka stdin i czeka, czytając przy tym stdout i stderr.
+    Samo wait() zawisa na Windows: silnik pisze jeszcze zdarzenia, a potok mieści tam ~4 KB, więc proces
+    stoi na zapisie i nie dochodzi do końca wejścia. Zwraca (stdout, stderr) z tego, co zostało."""
+    try:
+        return p.communicate(wejscie or None, timeout=timeout)
+    except (OSError, ValueError):        # wejście już zamknięte albo proces skończył się wcześniej
+        return p.communicate(timeout=timeout)
+
+
 def dom_env(home) -> dict:
     """Zmienne katalogu domowego dla procesu potomnego: HOME i USERPROFILE (Windows czyta USERPROFILE)."""
     return {"HOME": str(home), "USERPROFILE": str(home)}

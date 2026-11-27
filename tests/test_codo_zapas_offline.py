@@ -16,7 +16,7 @@ from unittest.mock import patch
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
+from codo_atrapy import atrapa, zakoncz  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -118,9 +118,7 @@ class ZapasAppServerTests(unittest.TestCase):
             events.append(json.loads(line))
             if events[-1]["type"] == "turn_end":
                 break
-        zamknij_stdin(p)
-        p.wait(10)
-        err = p.stderr.read()
+        _, err = zakoncz(p)
         self.assertNotIn("Traceback", err)
         return events
 

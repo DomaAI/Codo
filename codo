@@ -14671,6 +14671,19 @@ def _app_reader(inbox: list, wake: threading.Event) -> None:
     inbox.append({"type": "quit"})
     wake.set()
 
+    # 27.11.2026: zamknięte wejście znaczy, że okna już nie ma. Główny wątek mógł utknąć na zapisie
+    # zdarzenia do stdout, którego nikt nie czyta (potok na Windows mieści ~4 KB, jedno „status” ma ~6 KB),
+    # i wtedy nigdy nie doszedłby do „quit”: proces wisiał i trzymał folder roboczy. Po 10 s kończymy go sami
+    # (tylko proces `codo app-server`; silnik wołany w tym samym procesie, np. w testach, zostaje).
+    if not _APP.get("wyjdz_po_eof"):
+        return
+
+    def _straznik() -> None:
+        import time as _t
+        _t.sleep(float(os.environ.get("CODO_APP_EXIT_GRACE") or 10))
+        os._exit(0)
+    threading.Thread(target=_straznik, daemon=True).start()
+
 
 def _app_history(messages: list) -> list:
     out = []
@@ -32314,6 +32327,7 @@ def main() -> int:
         # Na serwerze (rozmowa przeniesiona z Maca): tokeny agentów z pliku gospodarza, bez nadpisywania środowiska
         for k, v in _host_secrets().items():
             os.environ.setdefault(k, v)
+        _APP["wyjdz_po_eof"] = True
         return app_server(load_creds(), model)
     if args[:1] == ["host"]:
         # Gospodarz stałych agentów na serwerze (bez okna Codo i bez Maca).
