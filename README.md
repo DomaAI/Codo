@@ -97,6 +97,14 @@ the same turn moves on to the next brain with the whole history, files and plan.
   hand tasks over, on your computer and on the server together.
 - **MCP both ways.** `codo mcp` exposes Codo tools (browser, team, mail) to Claude Code and Codex.
 - **Skills that the agent writes itself**, plus skills from GitHub (`codo skills`).
+- **Files in the conversation.** Attach files, folders or a screenshot, type `@` for any project file,
+  and every path in an answer opens a preview: code, Markdown, HTML, images, PDF, video.
+- **Review every change.** The Changes panel shows what the agent did, side by side or unified. Accept or
+  reject a hunk, a file or everything, leave a note on a line, commit and open a pull request.
+- **Word, Excel and PowerPoint, edited in place.** The agent changes text, tables, cells, formulas and
+  slides without losing formatting, with a diff before saving and `/undo` after.
+- **Reviews and pull request checks.** Ask for a review and get a card with findings and "Fix this".
+  Codo follows the checks on your pull request, sends failed logs to the agent and merges when all pass.
 - **Undo for every edit.** Each file change is backed up; `/undo` reverts it, `/diff` shows it.
 - **Phone control.** With the DomaAI app (iOS, Android), `/rc` lets you follow the session and answer
   its questions from your phone. Commands that change things still ask for consent.
@@ -120,6 +128,30 @@ the same turn moves on to the next brain with the whole history, files and plan.
 **Windows and Linux** (`codo ui`, the app in its own window)
 
 <table>
+  <tr>
+    <td width="50%"><img src="assets/screens/win-signin.webp" alt="Sign in to Codo with your email, Google or Apple"></td>
+    <td width="50%"><img src="assets/screens/win-creator.webp" alt="Agent creator: shape, liquid colours and eyes of a live agent face"></td>
+  </tr>
+  <tr>
+    <td align="center">Sign in once, the same account as the Mac app</td>
+    <td align="center">Create your agent, its face changes live</td>
+  </tr>
+  <tr>
+    <td><img src="assets/screens/win-files.webp" alt="Attached files as cards, file links in the answer and the @ file list"></td>
+    <td><img src="assets/screens/win-changes.webp" alt="Changes panel: changed files and a side by side diff with accept and reject"></td>
+  </tr>
+  <tr>
+    <td align="center">Files in the conversation: cards, links, <code>@</code></td>
+    <td align="center">The Changes panel: accept or reject every hunk</td>
+  </tr>
+  <tr>
+    <td><img src="assets/screens/win-review.webp" alt="Review card with important and minor findings and Fix this buttons"></td>
+    <td><img src="assets/screens/win-pr-checks.webp" alt="Pull request panel with failing checks, Fix now and merge when every check passes"></td>
+  </tr>
+  <tr>
+    <td align="center">A review you can apply with one click</td>
+    <td align="center">Pull request checks, fixed and merged for you</td>
+  </tr>
   <tr>
     <td width="50%"><img src="assets/screens/win-code.webp" alt="Codo on Windows and Linux: start screen with persistent agents"></td>
     <td width="50%"><img src="assets/screens/win-models.webp" alt="Model picker: Claude Code, Codex and Grok on this computer, backup brain"></td>
@@ -168,6 +200,9 @@ the same turn moves on to the next brain with the whole history, files and plan.
 | Several agents at once | Separate terminals, copy and paste between them | Teams in separate git copies, groups with review and voting, rooms and agent mail |
 | Long work | Stops when you close the terminal | Marathon mode for hours, always-on agents on a server |
 | Where it answers | The terminal | Terminal, app window, phone, Telegram, Discord, Slack, WhatsApp, Signal, e-mail |
+| Reviewing changes | Read the diff in the terminal | A Changes panel: accept or reject each hunk, notes on lines go back to the agent |
+| Office documents | Plain text files | Word, Excel, PowerPoint and ODF edited in place, formatting kept |
+| Pull requests | You watch the checks yourself | Codo follows the checks, sends failed logs to the agent and merges when all pass |
 | Undo | Depends on the tool | A backup of every edit, `/undo` and `/diff` |
 | Cost | Another subscription | Free and open source (Apache 2.0), uses the plans you already have |
 
@@ -181,6 +216,9 @@ the same turn moves on to the next brain with the whole history, files and plan.
 | Always-on agents and messengers (`codo host`) | ✓ | ✓ | ✓ |
 | Model picker with backup brain, team runs in the window | ✓ | ✓ | ✓ |
 | Compare models side by side, rooms with your agents | ✓ | ✓ | ✓ |
+| Files in the conversation, Changes panel, review card, pull request checks | ✓ | ✓ | ✓ |
+| Edit Word, Excel, PowerPoint and ODF in place | ✓ | ✓ | ✓ |
+| Tested in CI on every push (on Windows also the window, NTFS paths and Edge) | ✓ | ✓ | ✓ |
 | iMessage, Gmail and Calendar triggers, system notifications | ✓ | | |
 | 18 languages, light and dark | ✓ | ✓ | ✓ |
 
@@ -221,6 +259,8 @@ the same turn moves on to the next brain with the whole history, files and plan.
 | Area | What Codo does | Command |
 | --- | --- | --- |
 | Conversation | Interactive session, one shot task, resume, print mode for scripts with JSON output | `codo`, `codo "task"`, `codo -c`, `codo resume`, `codo -p --json` |
+| Files and changes | Attach files and folders, `@` for project files, previews, a Changes panel with hunk accept and reject, review cards, pull request checks | `codo ui`, `/diff`, `/undo` |
+| Office documents | Edit Word, Excel, PowerPoint and ODF in place: text, tables, cells, formulas, slides and notes | ask the agent |
 | App window | The full Codo app on Windows and Linux, the same as on Mac: code, model picker with compare, agent teams, groups and rooms, Office, bots and swarms, workflows, delegate, persistent agents and settings, in 18 languages (`--tab` for a browser tab) | `codo ui` |
 | Long work | Works alone for hours or days with a plan, log, queue of goals and hard limits | `codo work`, `codo work add`, `codo work status` |
 | Teams | A lead splits a goal, members work in separate git copies, reviewers check, you approve the plan and the merge, a pull request at the end | `codo team run`, `codo team apply --pr` |
