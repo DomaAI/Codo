@@ -66,6 +66,11 @@ class FakeModel(BaseHTTPRequestHandler):
         calls, text = [], ANSWER
         if last.get("role") == "tool":
             text = DONE
+        elif "umow" in user_text and body.get("tools"):
+            text = ""
+            calls = [{"id": "c1", "type": "function", "function": {"name": "office_edit", "arguments": json.dumps(
+                {"path": "umowa.docx", "action": "replace", "find": "Kaucja wynosi 2000 zł.",
+                 "replace": "Kaucja wynosi 3000 zł."})}}]
         elif "zapisz" in user_text and body.get("tools"):
             text = ""
             calls = [{"id": "c1", "type": "function", "function": {
@@ -96,6 +101,37 @@ class FakeModel(BaseHTTPRequestHandler):
             self.wfile.flush()
             time.sleep(0.01)
         self.wfile.write(b"data: [DONE]\n\n")
+
+
+def make_docx(paragraphs: list) -> bytes:
+    """Mały dokument Worda z zipa: tytuł (styl Title), akapity i tabela, jak z Worda (przestrzenie nazw, relacje)."""
+    import io
+    import zipfile
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    decl = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+    rt = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/"
+    body = '<w:p><w:pPr><w:pStyle w:val="Tytul"/></w:pPr><w:r><w:t>Umowa najmu</w:t></w:r></w:p>' + "".join(
+        f'<w:p><w:r><w:t xml:space="preserve">{t}</w:t></w:r></w:p>' for t in paragraphs) + (
+        '<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Pozycja</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Kwota</w:t></w:r></w:p></w:tc></w:tr>'
+        '<w:tr><w:tc><w:p><w:r><w:t>Czynsz</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>2000</w:t></w:r></w:p></w:tc></w:tr></w:tbl>')
+    files = {
+        "[Content_Types].xml": decl + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        '<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+        "_rels/.rels": decl + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f'<Relationship Id="rId1" Type="{rt}officeDocument" Target="word/document.xml"/></Relationships>',
+        "word/_rels/document.xml.rels": decl + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        f'<Relationship Id="rId1" Type="{rt}styles" Target="styles.xml"/></Relationships>',
+        "word/document.xml": decl + f'<w:document {w}><w:body>{body}<w:sectPr/></w:body></w:document>',
+        "word/styles.xml": decl + f'<w:styles {w}><w:style w:type="paragraph" w:styleId="Tytul"><w:name w:val="Title"/></w:style></w:styles>',
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, data in files.items():
+            z.writestr(zipfile.ZipInfo(name, (2026, 11, 27, 10, 0, 0)), data)
+    return buf.getvalue()
 
 
 def start_fake_model():
@@ -449,6 +485,66 @@ class CodoUiTests(unittest.TestCase):
         self.assertEqual(self._git("rev-parse", "--abbrev-ref", "HEAD").strip(), "codo/zmiany")
         self.assertEqual(self._git("show", "--name-only", "--format=%s", "HEAD").split(), ["Zmiana", "a.py", "a.py"])
         self.assertIn("nowy.txt", self._git("status", "--porcelain"))
+
+    def test_zmiany_dokumentu_word_tekst_i_caly_plik(self):
+        """office_edit przez atrapę modelu: zdarzenie edit z diffem tekstu i formatem, panel Zmiany z tekstem
+        dokumentu (HEAD albo kopia z .doma/backups), fragmentów nie ma, odrzucenie i cofnięcie całego pliku,
+        podgląd pliku z nagłówkami i tabelą."""
+        self._git("init", "-q", "-b", "main")
+        self._git("config", "user.email", "t@t"); self._git("config", "user.name", "T")
+        self._git("config", "core.autocrlf", "false")
+        before = make_docx(["Najemca płaci 2000 zł.", "Kaucja wynosi 2000 zł."])
+        (self.proj / "umowa.docx").write_bytes(before)
+        self._git("add", "-A"); self._git("commit", "-qm", "start")
+        # dokument spoza repozytorium: „przed” to kopia sprzed zmiany w .doma/backups
+        (self.proj / ".doma" / "backups").mkdir(parents=True)
+        (self.proj / ".doma" / "backups" / "aneks.docx.20261127-100000.bak").write_bytes(make_docx(["Aneks numer 1."]))
+        (self.proj / "aneks.docx").write_bytes(make_docx(["Aneks numer 2."]))
+        c = self._start()
+        c.listen()
+        c.wait("ready")
+        c.send({"type": "send", "text": "popraw umowę: kaucja 3000"})
+        edit = c.wait("edit", timeout=40)
+        self.assertEqual((edit["plik"], edit["format"], edit["dodane"], edit["usuniete"]), ("umowa.docx", "DOCX", 1, 1))
+        self.assertIn("-Kaucja wynosi 2000 zł.", edit["diff"])
+        self.assertIn("+Kaucja wynosi 3000 zł.", edit["diff"])
+        self.assertTrue(c.wait("turn_end", timeout=40)["ok"])
+        edited = (self.proj / "umowa.docx").read_bytes()
+        files = {f["path"]: f for f in json.loads(c.req("GET", "/api/changes/list")[1])["files"]}
+        self.assertEqual({k: files["umowa.docx"][k] for k in ("binary", "office", "added", "removed", "status")},
+                         {"binary": False, "office": "DOCX", "added": 1, "removed": 1, "status": "modified"})
+        self.assertEqual((files["aneks.docx"]["office"], files["aneks.docx"]["binary"]), ("DOCX", False))
+        f = json.loads(c.req("GET", "/api/changes/file?p=umowa.docx")[1])
+        self.assertEqual((f["office"], f["whole_file"], f["base_from"], f.get("binary")), ("DOCX", True, "head", None))
+        self.assertIn("# Umowa najmu\n", f["head"])
+        self.assertIn("Kaucja wynosi 2000 zł.", f["head"]); self.assertIn("Kaucja wynosi 3000 zł.", f["work"])
+        self.assertIn("Czynsz | 2000 |", f["work"])
+        self.assertEqual(f["index"], f["head"])
+        g = json.loads(c.req("GET", "/api/changes/file?p=aneks.docx")[1])
+        self.assertEqual((g["base_from"], g["head"].strip().splitlines()[1], g["work"].strip().splitlines()[1]),
+                         ("backup", "Aneks numer 1.", "Aneks numer 2."))
+        # fragment tekstu nie wraca do zipa: tylko cały plik
+        st, body, _ = c.req("POST", "/api/changes/apply", {"p": "umowa.docx", "work": f["head"], "expect_work": f["work_sig"]})
+        self.assertEqual((st, json.loads(body)["error"]), (400, "whole_file"))
+        self.assertEqual((self.proj / "umowa.docx").read_bytes(), edited)
+        # podgląd pliku: tekst dokumentu i HTML z nagłówkiem i tabelą
+        p = json.loads(c.req("GET", "/api/file/preview?p=umowa.docx")[1])
+        self.assertEqual((p["kind"], p["format"]), ("office", "DOCX"))
+        self.assertIn("<h1>Umowa najmu</h1>", p["html"])
+        self.assertIn("<td>Czynsz</td>", p["html"])
+        self.assertIn("Kaucja wynosi 3000 zł.", p["text"])
+        # odrzuć cały plik: wraca HEAD (i kopia z backups dla dokumentu spoza repo), cofnij jednym krokiem
+        self.assertEqual(c.req("POST", "/api/changes/action", {"action": "reject", "paths": ["umowa.docx", "aneks.docx"]})[0], 200)
+        self.assertEqual((self.proj / "umowa.docx").read_bytes(), before)
+        self.assertIn("Aneks numer 1.", json.loads(c.req("GET", "/api/file/preview?p=aneks.docx")[1])["text"])
+        self.assertNotIn("umowa.docx", {x["path"] for x in json.loads(c.req("GET", "/api/changes/list")[1])["files"]})
+        self.assertTrue(json.loads(c.req("POST", "/api/changes/undo", {})[1])["ok"])
+        self.assertEqual((self.proj / "umowa.docx").read_bytes(), edited)
+        self.assertIn("Aneks numer 2.", json.loads(c.req("GET", "/api/file/preview?p=aneks.docx")[1])["text"])
+        # przyjmij cały plik = git add (indeks to teraz wersja po zmianie)
+        c.req("POST", "/api/changes/action", {"action": "accept", "paths": ["umowa.docx"]})
+        f = json.loads(c.req("GET", "/api/changes/file?p=umowa.docx")[1])
+        self.assertEqual(f["index"], f["work"])
 
     def test_pr_testy_napraw_i_scal_przez_gh(self):
         """Pilnowanie PR jak PRWatch na Macu: stan testów z gh pr view, logi nieudanych (gh run view --log-failed)
@@ -1186,6 +1282,7 @@ class TestPrzegladIPlikiWOknie(unittest.TestCase):
         src = (self.UI / "16-review.js").read_text(encoding="utf-8")
         prog = ("""
 const L = (k) => k, Lf = (k, ...a) => { let i = 0; return k.replace(/%(d|@)/g, () => String(a[i++])); };
+const Lp = (n, one, other) => Lf(n === 1 ? one : other, n);
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
 const localStorage = { getItem: () => null, setItem: () => {} };
 const document = { addEventListener: () => {}, querySelectorAll: () => [], querySelector: () => null, body: { contains: () => false } };
@@ -1232,12 +1329,54 @@ console.log(JSON.stringify(out));
         d = src.index("if (typeof editCard")
         prog = src[a:b] + src[c:d] + r"""
 console.log(JSON.stringify([pfIsBinaryEdit({plik: "faktury/faktura.pdf", diff: "+%PDF-1.7"}), pfIsBinaryEdit({plik: "a.py", diff: "+x"}),
-  pfIsBinaryEdit({plik: "dane.dat", diff: "+��"}), FK.of("faktura.pdf").label, pfIsBinaryEdit({plik: "logo.svg", diff: "+<svg>"})]));
+  pfIsBinaryEdit({plik: "dane.dat", diff: "+��"}), FK.of("faktura.pdf").label, pfIsBinaryEdit({plik: "logo.svg", diff: "+<svg>"}),
+  pfIsBinaryEdit({plik: "umowa.docx", format: "DOCX", diff: "-Kaucja 2000\n+Kaucja 3000"}), pfIsBinaryEdit({plik: "umowa.docx", diff: ""})]));
 """
         r = subprocess.run([node, "-"], input=prog, capture_output=True, text=True, encoding="utf-8", timeout=60)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(json.loads(r.stdout), [True, False, True, "PDF", False])
+        # office_edit: diff tekstu dokumentu i format → zwykła karta z diffem; plik Worda bez diffu → rodzaj i rozmiar
+        self.assertEqual(json.loads(r.stdout), [True, False, True, "PDF", False, False, True])
         self.assertIn('meta.textContent = parts().concat(fmtSize(i.size)).join(" · ")', src)
+
+    def test_liczba_mnoga_w_oknie(self):
+        """Lp (00-shell.js): Intl.PluralRules języka okna i formy „klucz#kategoria” z i18n-extra; bez nich tekst z Maca."""
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("brak node")
+        src = (self.UI / "00-shell.js").read_text(encoding="utf-8")
+        part = src[src.index("const I18N = "):src.index("const UI_LANGS")]
+        tr = {}
+        for lang in ("pl", "ro", "fr", "de", "ja"):
+            d = json.loads((self.UI / "i18n" / f"{lang}.json").read_text(encoding="utf-8"))
+            d.update(json.loads((self.UI / "i18n-extra" / f"{lang}.json").read_text(encoding="utf-8")))
+            tr[lang] = d
+        prog = part + "const TR = " + json.dumps(tr, ensure_ascii=False) + r""";
+const out = {};
+const run = (lang, ns) => { I18N.lang = lang; I18N.s = TR[lang] || {}; out[lang] = ns.map((n) => Lp(n, "%d check failed", "%d checks failed")); };
+run("en", [1, 2]); run("pl", [1, 2, 4, 5, 12, 22, 25]); run("ro", [1, 2, 20]); run("fr", [0, 1, 2]); run("de", [1, 3]); run("ja", [1, 3]);
+I18N.lang = "pl"; I18N.s = TR.pl;
+out.files = [1, 3, 5].map((n) => Lp(n, "1 file", "%d files"));
+out.left = Lp(2, "%@: %d file was left out (too large or too many)", "%@: %d files were left out (too large or too many)", "Pliki", 2);
+I18N.lang = "en"; I18N.s = {};
+out.enFiles = [1, 2].map((n) => Lp(n, "1 file", "%d files"));
+console.log(JSON.stringify(out));
+"""
+        r = subprocess.run([node, "-"], input=prog, capture_output=True, text=True, encoding="utf-8", timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        o = json.loads(r.stdout)
+        self.assertEqual(o["en"], ["1 check failed", "2 checks failed"])
+        self.assertEqual(o["pl"], ["1 test nie przeszedł", "2 testy nie przeszły", "4 testy nie przeszły", "5 testów nie przeszło",
+                                   "12 testów nie przeszło", "22 testy nie przeszły", "25 testów nie przeszło"])
+        self.assertEqual(o["ro"], ["1 verificare eșuată", "2 verificări eșuate", "20 de verificări eșuate"])
+        self.assertEqual(o["fr"], ["0 vérification échouée", "1 vérification échouée", "2 vérifications échouées"])
+        self.assertEqual(o["de"], ["1 Prüfung fehlgeschlagen", "3 Prüfungen fehlgeschlagen"])
+        self.assertEqual(o["ja"], ["失敗したチェック: 1", "失敗したチェック: 3"])
+        self.assertEqual(o["files"], ["1 plik", "3 pliki", "5 plików"])
+        self.assertEqual(o["left"], "Pliki: pominięto 2 pliki (za duże albo za dużo)")
+        self.assertEqual(o["enFiles"], ["1 file", "2 files"])
+        # w oknie nie ma już „%d checks failed” bez liczby mnogiej
+        for f in self.UI.glob("*.js"):
+            self.assertNotIn('Lf("%d checks failed"', f.read_text(encoding="utf-8"), f.name)
 
     def test_podglad_html_i_wzrok_twarzy(self):
         chg = (self.UI / "16-changes.js").read_text(encoding="utf-8")

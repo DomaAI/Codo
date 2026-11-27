@@ -72,7 +72,7 @@ def test_google_istniejace_konto_od_razu_paruje(social):
     form = stan.zadania[1][2]
     assert form["identity_token"] == GOOGLE_TOK and form["nonce"] == NONCE
     assert "age_acknowledged_16plus" not in form
-    dev = json.loads((tmp / "device.json").read_text())
+    dev = json.loads((tmp / "device.json").read_text(encoding="utf-8"))
     assert dev["device_id"] == "dev-1"
     calosc = json.dumps(zdarzenia())
     assert TOKEN not in calosc and DEV_SECRET not in calosc and GOOGLE_TOK not in calosc
