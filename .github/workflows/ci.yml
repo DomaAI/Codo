@@ -22,8 +22,12 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Compile
         run: python -m py_compile codo
+      - name: Startup time (diagnostic)
+        run: |
+          python -c "import subprocess,sys,time;t=time.time();subprocess.run([sys.executable,'codo','version']);print('codo version: %.1f s' % (time.time()-t))"
+          python -X importtime -c "import ssl, http.server, urllib.request" 2>&1 | sort -t'|' -k2 -n | tail -5
       - name: Tests (no network, no model providers)
-        timeout-minutes: 20
+        timeout-minutes: 30
         env:
           CODO_FILE: ${{ github.workspace }}/codo
           CODO_LANG: pl   # tests check the Polish source strings
