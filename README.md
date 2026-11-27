@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="assets/agents.png" width="560" alt="Codo and its crew: Josh, Luna, Codo, Max and Mia">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/hero/hero-dark.webp">
+    <img src="assets/hero/hero-light.webp" width="100%" alt="Codo. Josh, Luna, Codo, Max and Mia, five live agent faces that blink and talk, over a lava lamp made of code. Your team of AI agents, on the plans you already pay for.">
+  </picture>
 </p>
 
-<h1 align="center">Codo</h1>
-
 <p align="center">
-  <b>Your team of AI agents, on the plans you already pay for.</b><br>
-  Claude Code, Codex, Gemini CLI, any API or a local model in one app and one terminal.<br>
+  <b>Claude Code, Codex, Gemini CLI, any API or a local model. One app, one terminal, one crew.</b><br>
   When one plan hits its limit, the same conversation keeps going on the next one.
 </p>
 
@@ -20,6 +20,8 @@
   <a href="https://domaai.pl/pobierz-codo.html"><b>Download page</b></a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#see-it-work">See it work</a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#agents-that-work-together">Groups</a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#screenshots">Screenshots</a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -37,9 +39,51 @@
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="macOS, Windows, Linux">
 </p>
 
+## See it work
+
+<h3 align="center">One conversation, many brains</h3>
+
 <p align="center">
   <img src="assets/demo/many-brains.webp" width="900" alt="Recording: a task runs on Claude Code, Claude Code reaches its plan limit and Codex finishes the same turn">
-  <br><sub>One conversation, many brains: when Claude Code hits its plan limit, Codex picks up right where it left off.</sub>
+  <br><sub>Claude Code hits its plan limit in the middle of a task. Codex picks up the same turn, with the whole history, files and plan.</sub>
+</p>
+
+<a name="agents-that-work-together"></a>
+<h3 align="center">Agents that work together</h3>
+
+<p align="center">
+  <img src="assets/demo/agents-together.webp" width="900" alt="Recording: a group of agents splits a launch between Max, Josh and Mia, each on its own brain">
+  <br><sub><b>Conversation.</b> Ask the group, mention one, and Luna splits the work across Claude Code, Codex and Gemini.</sub>
+</p>
+
+<p align="center">
+  <img src="assets/demo/group-vote.webp" width="900" alt="Recording: the group switches to Vote, four agents on Claude Code, Codex and Gemini each propose a headline, then vote, and the count picks Josh's proposal">
+  <br><sub><b>Vote.</b> Every agent proposes on its own brain, then they vote on each other's work and the count picks a winner.</sub>
+</p>
+
+Six ways for a group to work, picked per message from the composer:
+
+| Way | What happens |
+| --- | --- |
+| **Conversation** | A group chat: everyone answers as themselves, `@name` asks just one |
+| **Side by side and compare** | The same task for everyone, answers next to each other, the lead joins them into one |
+| **The lead splits the work** | The lead hands out parts by strength, they work at once, the lead puts it together |
+| **Cross review** | The lead writes, the others review, rounds stop when every reviewer approves |
+| **Vote** | Everyone proposes, everyone votes for the best of the others |
+| **Pipeline** | One after another, each result is the next one's input |
+
+<h3 align="center">A team that ships</h3>
+
+<p align="center">
+  <img src="assets/demo/team-ships.webp" width="900" alt="Recording: an agent team gets its plan approved, works in parallel and opens a pull request">
+  <br><sub>Approve the plan, watch agents build and review in parallel in their own git copies, then open the pull request.</sub>
+</p>
+
+<h3 align="center">Your agent, with a face</h3>
+
+<p align="center">
+  <img src="assets/demo/agent-creator.webp" width="900" alt="Recording: the agent creator, a new agent called Nova changes from a cube to a cloud to a kitten and its liquid colours mix live">
+  <br><sub>Name it, pick a shape and mix its liquid. The face is alive while you shape it, then choose the brain it thinks with.</sub>
 </p>
 
 ## Get Codo
@@ -110,18 +154,6 @@ the same turn moves on to the next brain with the whole history, files and plan.
   its questions from your phone. Commands that change things still ask for consent.
 - **A single Python file.** No dependencies beyond Python 3.9+, and the installer brings Python along
   when the computer has none.
-
-## See it work
-
-<p align="center">
-  <img src="assets/demo/agents-together.webp" width="900" alt="Recording: a group of agents splits a launch between Max, Josh and Mia, each on its own brain">
-  <br><sub>Your agents work together: mention one, and the team splits the work across Claude Code, Codex and Gemini.</sub>
-</p>
-
-<p align="center">
-  <img src="assets/demo/team-ships.webp" width="900" alt="Recording: an agent team gets its plan approved, works in parallel and opens a pull request">
-  <br><sub>A team that ships: approve the plan, watch agents build and review in parallel, then open the pull request.</sub>
-</p>
 
 ## Screenshots
 
