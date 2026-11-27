@@ -1502,7 +1502,7 @@ class KontraktTests(_AppBase):
                 self.send(type="team_merge_decide", run_id=ev["run_id"], task_id=ev["task_id"], approve=True)
         done = self.wait("team_done", 240, on)
         rid = done["run_id"]
-        self.assertEqual(done["status"], "review_final")
+        self.assertEqual(done["status"], "review_final", json.dumps(done, ensure_ascii=False)[:3000])
         self.assertEqual(done["source"]["kind"], "chat")
         self.assertTrue(asks, "członek b w trybie ask powinien pytać o polecenie")
         self.assertEqual([t["id"] for t in plans[0]["tasks"]], ["T1", "T2"])

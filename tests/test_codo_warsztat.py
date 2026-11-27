@@ -11,7 +11,7 @@ from pathlib import Path
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from codo_atrapy import zamknij_stdin  # noqa: E402
+from codo_atrapy import sprzataj, zamknij_stdin  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -158,7 +158,7 @@ class KsztaltAgentaTests(unittest.TestCase):
     def _serwer(self, cfg, wiadomosci, czekaj_na):
         """Wysyła wiadomości i czyta odpowiedzi, aż przyjdzie `czekaj_na` (stdin zostaje otwarty, jak w oknie)."""
         import subprocess
-        env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg)
+        env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg)
         p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")), "app-server"],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                              text=True, env=env, cwd=cfg, encoding="utf-8")
@@ -231,9 +231,11 @@ class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
         srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
-            with tempfile.TemporaryDirectory() as cfg:
+            tmpd = tempfile.TemporaryDirectory()
+            cfg = tmpd.name
+            try:
                 Path(cfg, "credentials.json").write_text(json.dumps({"access_token": "t", "refresh_token": "r"}), encoding="utf-8")
-                env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg,
+                env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg,
                            DOMA_API_URL=f"http://127.0.0.1:{srv.server_address[1]}")
                 p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")),
                                       "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -267,6 +269,8 @@ class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
                 self.assertTrue(zapis.get("lokalnie"))
                 self.assertEqual((zapis.get("agent") or {}).get("name"), "Kuba")
                 self.assertTrue(po, "silnik musi odpowiadać po nieudanym zapisie na serwerze")
+            finally:
+                sprzataj(tmpd)   # Windows: katalog roboczy silnika zwalnia się chwilę po jego końcu
         finally:
             srv.shutdown()
 
@@ -278,7 +282,7 @@ class WorkflowKanalyTests(unittest.TestCase):
         import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as cfg:
-            env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg)
+            env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg)
             p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")), "app-server"],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                  text=True, env=env, cwd=cfg, encoding="utf-8")
