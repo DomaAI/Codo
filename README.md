@@ -422,8 +422,8 @@ codo work status | codo work log -f | codo work stop
 
 ## Free credits
 
-Signing in with MaddLabs (`codo login maddlabs`) gives a new account a 14 day trial with
-2 million free tokens per day on models hosted in the EU. Terms:
+Signing in with MaddLabs (`codo login maddlabs`) gives a new account a one-time pack of
+2 million free tokens on Qwen3.8 27B, hosted in the EU, and doubles the first top up. Terms:
 [maddlabs.co/legal/trial](https://maddlabs.co/legal/trial). After the trial you pay per token from a
 prepaid balance at [maddlabs.co](https://maddlabs.co), or switch to your own key at any time.
 
