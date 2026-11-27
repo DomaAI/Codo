@@ -69,9 +69,9 @@ class InstalatorShTests(unittest.TestCase):
         data = CLI.read_bytes()
         self.sha = hashlib.sha256(data).hexdigest()
         (self.srv_dir / "cli" / "doma").write_bytes(data)
-        (self.srv_dir / "cli" / "doma.sha256").write_text(self.sha + "\n")
+        (self.srv_dir / "cli" / "doma.sha256").write_text(self.sha + "\n", encoding="utf-8")
         (self.srv_dir / "codo").write_bytes(data)
-        (self.srv_dir / "SHA256SUMS").write_text(f"{self.sha}  codo\n")
+        (self.srv_dir / "SHA256SUMS").write_text(f"{self.sha}  codo\n", encoding="utf-8")
         handler = functools.partial(_Cichy, directory=str(self.srv_dir))
         self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
@@ -87,13 +87,13 @@ class InstalatorShTests(unittest.TestCase):
                 "DOMA_CONFIG_DIR": str(self.home / ".config" / "doma")}
         full.update(env)
         return subprocess.run([BASH, str(INSTALL_SH)], env=full, capture_output=True, text=True,
-                              stdin=subprocess.DEVNULL, timeout=120)
+                              stdin=subprocess.DEVNULL, timeout=120, encoding="utf-8")
 
     def codo(self, *args, path=None):
         env = {"HOME": str(self.home), "PATH": path or os.environ["PATH"], "CODO_LANG": "pl",
                "DOMA_CONFIG_DIR": str(self.home / ".config" / "doma")}
         return subprocess.run([str(self.bin / "codo"), *args], env=env, capture_output=True, text=True,
-                              stdin=subprocess.DEVNULL, timeout=60)
+                              stdin=subprocess.DEVNULL, timeout=60, encoding="utf-8")
 
     def test_swieza_instalacja(self):
         r = self.install()
@@ -104,13 +104,13 @@ class InstalatorShTests(unittest.TestCase):
         for old in ("domaai", "doma", "domaai-code"):
             self.assertTrue((self.bin / old).is_symlink(), old)
         # Świeży macOS nie ma ~/.zshrc: instalator go tworzy, inaczej `codo` nie ma w PATH.
-        rc = (self.home / ".zshrc").read_text()
+        rc = (self.home / ".zshrc").read_text(encoding="utf-8")
         self.assertIn(f'export PATH="{self.bin}:$PATH"', rc)
         # Druga instalacja niczego nie dubluje.
         r2 = self.install()
         self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
         self.assertIn("Przeinstalowano", r2.stdout)
-        self.assertEqual((self.home / ".zshrc").read_text().count("export PATH="), 1)
+        self.assertEqual((self.home / ".zshrc").read_text(encoding="utf-8").count("export PATH="), 1)
 
     def test_komunikaty_po_angielsku(self):
         r = self.install(LANG="en_US.UTF-8")
@@ -119,15 +119,15 @@ class InstalatorShTests(unittest.TestCase):
         self.assertIn("Get started", r.stdout)
 
     def test_powloki_bash_i_fish(self):
-        (self.home / ".bashrc").write_text("# moje\n")
+        (self.home / ".bashrc").write_text("# moje\n", encoding="utf-8")
         self.assertEqual(self.install(SHELL="/bin/bash").returncode, 0)
-        self.assertIn(str(self.bin), (self.home / ".bashrc").read_text())
+        self.assertIn(str(self.bin), (self.home / ".bashrc").read_text(encoding="utf-8"))
         shutil.rmtree(self.bin)
         self.assertEqual(self.install(SHELL="/usr/bin/fish").returncode, 0)
-        self.assertIn(f'fish_add_path -g "{self.bin}"', (self.home / ".config/fish/config.fish").read_text())
+        self.assertIn(f'fish_add_path -g "{self.bin}"', (self.home / ".config/fish/config.fish").read_text(encoding="utf-8"))
 
     def test_zla_suma_przerywa(self):
-        (self.srv_dir / "cli" / "doma.sha256").write_text("0" * 64 + "\n")
+        (self.srv_dir / "cli" / "doma.sha256").write_text("0" * 64 + "\n", encoding="utf-8")
         r = self.install()
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("Suma kontrolna się nie zgadza", r.stderr)
@@ -136,7 +136,7 @@ class InstalatorShTests(unittest.TestCase):
     def test_obciete_pobranie_przerywa(self):
         data = CLI.read_bytes()[:20_000]
         (self.srv_dir / "cli" / "doma").write_bytes(data)
-        (self.srv_dir / "cli" / "doma.sha256").write_text(hashlib.sha256(data).hexdigest() + "\n")
+        (self.srv_dir / "cli" / "doma.sha256").write_text(hashlib.sha256(data).hexdigest() + "\n", encoding="utf-8")
         r = self.install()
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("Nic nie zmieniono", r.stderr)
@@ -153,6 +153,8 @@ class InstalatorShTests(unittest.TestCase):
                 self.assertNotIn(slowo, tekst, f"{nazwa} wymienia {slowo}")
 
     def test_zrodlo_wydanie_wymaga_adresu(self):
+        if 'CODO_RELEASES_URL:-}' not in INSTALL_SH.read_text(encoding="utf-8"):
+            self.skipTest("kopia eksportowana ma adres wydań wpisany celowo (instalacja poszłaby do sieci)")
         r = self.install(CODO_SOURCE="wydanie")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("CODO_RELEASES_URL", r.stderr)
@@ -166,7 +168,7 @@ class InstalatorShTests(unittest.TestCase):
         self.assertEqual(self.codo("version").returncode, 0)
         self.assertFalse((self.bin / "domaai").exists())     # dawne nazwy tylko tam, gdzie już były
         shutil.rmtree(self.bin)
-        (self.srv_dir / "SHA256SUMS").write_text(f"{self.sha}  inny-plik\n")
+        (self.srv_dir / "SHA256SUMS").write_text(f"{self.sha}  inny-plik\n", encoding="utf-8")
         r = self.install(CODO_SOURCE="wydanie", CODO_BASE_URL=self.url, LANG="en_US.UTF-8")
         self.assertNotEqual(r.returncode, 0)
         self.assertIn("no entry for codo", r.stderr)
@@ -175,7 +177,7 @@ class InstalatorShTests(unittest.TestCase):
         """PATH, w którym `python3` się nie nadaje, a dobry interpreter ma inną nazwę."""
         fake = self.tmp / "fakebin"
         fake.mkdir()
-        (fake / "python3").write_text("#!/bin/sh\nexit 1\n")
+        (fake / "python3").write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
         (fake / "python3").chmod(0o755)
         real = os.path.realpath(getattr(sys, "_base_executable", None) or sys.executable)
         os.symlink(real, fake / "python3.12")

@@ -15,6 +15,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import atrapa  # noqa: E402
+
 _CFG = tempfile.mkdtemp(prefix="codo-acp-")
 os.environ["DOMA_CONFIG_DIR"] = _CFG
 os.environ["DOMA_API_URL"] = "http://127.0.0.1:9"
@@ -173,14 +176,12 @@ class CodoAcpTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.prev = os.getcwd()
         os.chdir(self.tmp.name)
-        Path("app.py").write_text("x = 1\n")
-        Path("inny.py").write_text("y = 1\n")
+        Path("app.py").write_text("x = 1\n", encoding="utf-8")
+        Path("inny.py").write_text("y = 1\n", encoding="utf-8")
         self.log = Path(self.tmp.name) / ".log"
         self.env_saved = dict(os.environ)
         os.environ["FAKE_LOG"] = str(self.log)
-        fake = Path(self.tmp.name) / ".bin-goose"
-        fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent(_FAKE_ACP))
-        fake.chmod(0o755)
+        fake = atrapa(self.tmp.name, ".bin-goose", textwrap.dedent(_FAKE_ACP))
         os.environ["CODO_AGENT_GOOSE"] = str(fake)
         for k in ("agent_sid", "agent_limit", "force_provider", "todos"):
             cli.SESSION.pop(k, None)
@@ -193,7 +194,7 @@ class CodoAcpTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def _msgs(self):
-        return [json.loads(x) for x in self.log.read_text().splitlines()] if self.log.exists() else []
+        return [json.loads(x) for x in self.log.read_text(encoding="utf-8").splitlines()] if self.log.exists() else []
 
     def _sent(self, method):
         return [e["msg"] for e in self._msgs() if e["msg"].get("method") == method]
@@ -278,7 +279,7 @@ class CodoAcpTests(unittest.TestCase):
     def test_tool_call_with_diff_through_fs_write_has_backup_and_undo(self):
         ok, out, msgs = self._turn("edytuj")
         self.assertTrue(ok, out)
-        self.assertEqual(Path("app.py").read_text(), "x = 2\n")
+        self.assertEqual(Path("app.py").read_text(encoding="utf-8"), "x = 2\n")
         self.assertIn("app.py", out)
         entries = [e for e in cli.EDIT_LOG if e["path"].name == "app.py" and e["path"].parent.resolve()
                    == Path(self.tmp.name).resolve()]
@@ -286,7 +287,7 @@ class CodoAcpTests(unittest.TestCase):
         self.assertIn("+x = 2", entries[-1]["diff"])
         _rel, baks = cli._backups_for(Path("app.py").resolve())
         self.assertEqual(len(baks), 1)                           # jedna kopia sprzed zmiany agenta
-        self.assertEqual(baks[0].read_text(), "x = 1\n")
+        self.assertEqual(baks[0].read_text(encoding="utf-8"), "x = 1\n")
         self.assertIn(Path("app.py").resolve(), cli.SESSION["edited"])
 
     def test_agent_written_file_reported_by_diff(self):
@@ -296,7 +297,7 @@ class CodoAcpTests(unittest.TestCase):
         self.assertIn("+y = 3", entry["diff"])
         self.assertIn("-y = 1", entry["diff"])
         _rel, baks = cli._backups_for(Path("inny.py").resolve())
-        self.assertEqual([b.read_text() for b in baks], ["y = 1\n"])
+        self.assertEqual([b.read_text(encoding="utf-8") for b in baks], ["y = 1\n"])
 
     def test_permission_allowed_and_rejected(self):
         ok, out, msgs = self._turn("polecenie", confirm=True)
@@ -338,7 +339,7 @@ class CodoAcpTests(unittest.TestCase):
 
     def test_read_mode_blocks_writes_commands_and_sets_plan_mode(self):
         ok, out, msgs = self._turn("edytuj polecenie terminal", mode="read")
-        self.assertEqual(Path("app.py").read_text(), "x = 1\n")
+        self.assertEqual(Path("app.py").read_text(encoding="utf-8"), "x = 1\n")
         text = msgs[-1]["content"]
         self.assertIn("zapis odrzucony", text)
         self.assertIn("wynik: r1", text)
@@ -375,7 +376,7 @@ class CodoAcpTests(unittest.TestCase):
     def test_cancel_sends_session_cancel(self):
         def esc():
             for _ in range(200):
-                if "Zaczynam" in "".join(x for x in [self.log.read_text() if self.log.exists() else ""]) or any(
+                if "Zaczynam" in "".join(x for x in [self.log.read_text(encoding="utf-8") if self.log.exists() else ""]) or any(
                         e["msg"].get("method") == "session/prompt" for e in self._msgs()):
                     threading.Event().wait(0.3)
                     os.kill(os.getpid(), signal.SIGINT)

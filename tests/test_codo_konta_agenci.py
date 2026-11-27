@@ -14,6 +14,11 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
 
 _CFG = tempfile.mkdtemp(prefix="codo-konta-")
 os.environ["DOMA_CONFIG_DIR"] = _CFG
@@ -155,16 +160,14 @@ class CodoKontaAgenciTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.prev = os.getcwd()
         os.chdir(self.tmp.name)
-        Path("app.py").write_text("x = 1\n")
+        Path("app.py").write_text("x = 1\n", encoding="utf-8")
         self.bin = Path(self.tmp.name) / ".bin"
         self.bin.mkdir()
         self.log = Path(self.tmp.name) / ".log"
         self.env_saved = dict(os.environ)
         os.environ["FAKE_LOG"] = str(self.log)
         for kind, code in _FAKE.items():
-            p = self.bin / kind
-            p.write_text(f"#!{sys.executable}\n" + textwrap.dedent(code))
-            p.chmod(0o755)
+            p = atrapa(self.bin, kind, textwrap.dedent(code))
             os.environ[f"CODO_AGENT_{kind.upper()}"] = str(p)
         _Api.calls.clear()
         _Api.need_completion_tokens = False
@@ -189,7 +192,7 @@ class CodoKontaAgenciTests(unittest.TestCase):
             return cli.login_endpoint(self.url, name)
 
     def _calls(self):
-        return [json.loads(x) for x in self.log.read_text().splitlines()]
+        return [json.loads(x) for x in self.log.read_text(encoding="utf-8").splitlines()]
 
     def _turn(self, model, text, mode="ask", auto=False, messages=None):
         messages = messages or [{"role": "system", "content": "sys"}]
@@ -205,7 +208,8 @@ class CodoKontaAgenciTests(unittest.TestCase):
         self.assertEqual(self._login("firma", "grok-mini"), 0)
         accts = cli.endpoint_accounts()
         self.assertEqual(set(accts), {"xai", "firma"})
-        self.assertEqual(oct(os.stat(cli.ENDPOINTS_FILE).st_mode & 0o777), "0o600")
+        if os.name != "nt":   # prawa POSIX
+            self.assertEqual(oct(os.stat(cli.ENDPOINTS_FILE).st_mode & 0o777), "0o600")
         self.assertEqual(cli.provider(), "endpoint")
         models, default = cli.fetch_models()
         ids = [m[0] for m in models]
@@ -439,13 +443,11 @@ class CodoAppServerTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.cfg = Path(self.tmp.name) / "cfg"
         self.cfg.mkdir()
-        (self.cfg / "settings.json").write_text(json.dumps({"provider": "agent", "model_agent": "agent:claude"}))
+        (self.cfg / "settings.json").write_text(json.dumps({"provider": "agent", "model_agent": "agent:claude"}), encoding="utf-8")
         self.proj = Path(self.tmp.name) / "proj"
         self.proj.mkdir()
-        (self.proj / "app.py").write_text("x = 1\n")
-        fake = Path(self.tmp.name) / "claude"
-        fake.write_text(f"#!{sys.executable}\n" + textwrap.dedent(_FAKE["claude"]))
-        fake.chmod(0o755)
+        (self.proj / "app.py").write_text("x = 1\n", encoding="utf-8")
+        fake = atrapa(self.tmp.name, "claude", textwrap.dedent(_FAKE["claude"]))
         self.env = dict(os.environ, DOMA_CONFIG_DIR=str(self.cfg), CODO_AGENT_CLAUDE=str(fake),
                         CODO_AGENT_CODEX="/brak", CODO_AGENT_GEMINI="/brak", DOMA_API_URL="http://127.0.0.1:9",
                         FAKE_LOG=str(Path(self.tmp.name) / "log"), CODO_LANG="en", DOMA_NO_SYNC="1")
@@ -458,7 +460,7 @@ class CodoAppServerTests(unittest.TestCase):
         script = str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma"))
         cmds = [{"type": "mode", "mode": "auto"}, {"type": "send", "text": "zmień x na 2"}]
         p = subprocess.Popen([sys.executable, script, "app-server"], cwd=self.proj, env=self.env, text=True,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         events = []
         ready = json.loads(p.stdout.readline())
         self.assertEqual(ready["type"], "ready")
@@ -471,7 +473,7 @@ class CodoAppServerTests(unittest.TestCase):
             events.append(json.loads(line))
             if events[-1]["type"] == "turn_end":
                 break
-        p.stdin.close()
+        zamknij_stdin(p)
         p.wait(10)
         kinds = [e["type"] for e in events]
         for k in ("mode", "turn_start", "delta", "assistant", "tool_start", "tool", "edit", "turn_end"):
@@ -481,7 +483,7 @@ class CodoAppServerTests(unittest.TestCase):
         self.assertIn("+x = 2", edit["diff"])
         self.assertTrue(events[-1]["ok"])
         self.assertTrue(events[-1]["convo_id"])
-        self.assertEqual((self.proj / "app.py").read_text(), "x = 2\n")
+        self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "x = 2\n")
         self.assertNotIn("Traceback", p.stderr.read())
 
     def test_ask_waits_for_answer_from_app(self):
@@ -537,17 +539,17 @@ class CodoAgentDomaaiTests(CodoAppServerTests):
     def setUp(self):
         super().setUp()
         (self.cfg / "device.json").write_text(json.dumps({"device_id": "d1", "device_secret": "s1",
-                                                           "api_url": "http://127.0.0.1:9"}))
+                                                           "api_url": "http://127.0.0.1:9"}), encoding="utf-8")
         (self.cfg / "agent.json").write_text(json.dumps({"agent": "Tomi", "kolory_agenta": ["#FF0000"],
                                                           "ton": "przyjazny",
-                                                          "persona": "TWOJA TOŻSAMOŚĆ: masz na imię Tomi"}))
+                                                          "persona": "TWOJA TOŻSAMOŚĆ: masz na imię Tomi"}), encoding="utf-8")
         self.env["CODO_PROVIDER"] = "agent"   # konto DomaAI jest, ale mózgiem jest Claude Code z atrapy
 
     def _run(self, cmds, until="turn_end"):
         import subprocess
         script = str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma"))
         p = subprocess.Popen([sys.executable, script, "app-server"], cwd=self.proj, env=self.env, text=True,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         events = [json.loads(p.stdout.readline())]
         for c in cmds:
             p.stdin.write(json.dumps(c) + "\n")
@@ -556,7 +558,7 @@ class CodoAgentDomaaiTests(CodoAppServerTests):
             events.append(json.loads(line))
             if events[-1]["type"] == until:
                 break
-        p.stdin.close()
+        zamknij_stdin(p)
         p.wait(10)
         return events
 
@@ -567,9 +569,9 @@ class CodoAgentDomaaiTests(CodoAppServerTests):
         self.assertEqual(renamed["title"], "Moja strona")
         self.assertEqual(events[-1]["title"], "Moja strona")
         saved = next((self.cfg / "rozmowy").rglob("*.json"))
-        data = json.loads(saved.read_text())
+        data = json.loads(saved.read_text(encoding="utf-8"))
         self.assertEqual(data["custom_title"], "Moja strona")
-        argv = json.loads(Path(self.env["FAKE_LOG"]).read_text().splitlines()[0])["argv"]
+        argv = json.loads(Path(self.env["FAKE_LOG"]).read_text(encoding="utf-8").splitlines()[0])["argv"]
         sysp = argv[argv.index("--append-system-prompt") + 1]
         self.assertIn("TWÓJ AGENT SI Z DOMAAI", sysp)
         self.assertIn("masz na imię Tomi", sysp)
@@ -580,9 +582,9 @@ class CodoAgentDomaaiTests(CodoAppServerTests):
         self.assertEqual(st["agent"]["name"], "Tomi")
         self.assertFalse(st["agent"]["on"])
         self.assertTrue(st["agent"]["persona_ready"])
-        self.assertIs(json.loads((self.cfg / "settings.json").read_text())["domaai_agent"], False)
+        self.assertIs(json.loads((self.cfg / "settings.json").read_text(encoding="utf-8"))["domaai_agent"], False)
         events = self._run([{"type": "mode", "mode": "auto"}, {"type": "send", "text": "zmień x na 2"}])
-        argv = json.loads(Path(self.env["FAKE_LOG"]).read_text().splitlines()[-1])["argv"]
+        argv = json.loads(Path(self.env["FAKE_LOG"]).read_text(encoding="utf-8").splitlines()[-1])["argv"]
         self.assertNotIn("TWÓJ AGENT SI Z DOMAAI", argv[argv.index("--append-system-prompt") + 1])
 
 
@@ -593,13 +595,13 @@ class CodoMaszynaTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "src").mkdir()
-        (self.root / "src" / "app.py").write_text("x = 1\n")
-        (self.root / ".env").write_text("SECRET=1\n")
-        (self.root / ".env.example").write_text("SECRET=\n")
+        (self.root / "src" / "app.py").write_text("x = 1\n", encoding="utf-8")
+        (self.root / ".env").write_text("SECRET=1\n", encoding="utf-8")
+        (self.root / ".env.example").write_text("SECRET=\n", encoding="utf-8")
         (self.root / "node_modules" / "a").mkdir(parents=True)
-        (self.root / "node_modules" / "a" / "i.js").write_text("//")
+        (self.root / "node_modules" / "a" / "i.js").write_text("//", encoding="utf-8")
         (self.root / ".git").mkdir()
-        (self.root / ".git" / "HEAD").write_text("ref")
+        (self.root / ".git" / "HEAD").write_text("ref", encoding="utf-8")
         self.cwd = os.getcwd()
         os.chdir(self.root)
         cli.SESSION["edited"] = []
@@ -630,12 +632,12 @@ class CodoMaszynaTests(unittest.TestCase):
              patch.object(cli, "_chat_id", return_value="0b6c2f8e-1d2a-4c3b-9e8f-123456789abc"):
             changed = cli.maszyna_pobierz()
         self.assertEqual(sorted(c[0] for c in changed), ["src/app.py", "src/nowy.py"])
-        self.assertEqual((self.root / "src" / "app.py").read_text(), "x = 2\n")
+        self.assertEqual((self.root / "src" / "app.py").read_text(encoding="utf-8"), "x = 2\n")
         self.assertFalse((self.root.parent / "poza.txt").exists())
         self.assertFalse((self.root / "node_modules" / "b.js").exists())
         backups = list((self.root / ".doma").rglob("app.py.*.bak"))
         self.assertEqual(len(backups), 1)
-        self.assertEqual(backups[0].read_text(), "x = 1\n")
+        self.assertEqual(backups[0].read_text(encoding="utf-8"), "x = 1\n")
 
     def test_machine_mode_turn_goes_to_lopus(self):
         cli.SESSION["maszyna"] = True
@@ -655,7 +657,7 @@ class CodoPrTests(unittest.TestCase):
         import subprocess as sp
         sp.run(["git", "init", "-q", "-b", "main"], check=True)
         sp.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "a"], check=True)
-        (self.root / "a.txt").write_text("x")
+        (self.root / "a.txt").write_text("x", encoding="utf-8")
 
     def tearDown(self):
         os.chdir(self.cwd)

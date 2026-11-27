@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 import urllib.error
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 loader = importlib.machinery.SourceFileLoader("doma_cli_auth_runtime", str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")))
 spec = importlib.util.spec_from_loader(loader.name, loader)
@@ -50,7 +52,7 @@ class AuthRuntimeTests(unittest.TestCase):
 
     def test_malformed_or_other_server_device_is_ignored(self):
         for value in ([], "text", 42, None, {"device_id": "a"}, {"device_id": "a", "device_secret": "b", "api_url": "https://other.invalid"}):
-            cli.DEVICE_FILE.write_text(json.dumps(value))
+            cli.DEVICE_FILE.write_text(json.dumps(value), encoding="utf-8")
             self.assertIsNone(cli.load_device())
 
     def test_save_is_private_and_removes_full_session(self):

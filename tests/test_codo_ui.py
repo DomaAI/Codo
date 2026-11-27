@@ -17,6 +17,11 @@ import unittest
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import atrapa  # noqa: E402
 
 SCRIPT = str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma"))
 
@@ -164,9 +169,9 @@ def make_env(root: Path, model_url: str, lang: str = "pl") -> dict:
     cfg = home / ".config" / "doma"
     cfg.mkdir(parents=True)
     (cfg / "konta.json").write_text(json.dumps({"konta": {"atrapa": {
-        "base_url": model_url, "api_key": "sk-test", "name": "Atrapa", "model": "atrapa-1"}}, "aktywne": "atrapa"}))
+        "base_url": model_url, "api_key": "sk-test", "name": "Atrapa", "model": "atrapa-1"}}, "aktywne": "atrapa"}), encoding="utf-8")
     (cfg / "settings.json").write_text(json.dumps({"provider": "endpoint", "model_endpoint": "@atrapa/atrapa-1",
-                                                   "lang": lang}))
+                                                   "lang": lang}), encoding="utf-8")
     env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), DOMA_CONFIG_DIR=str(cfg),
                DOMA_API_URL="http://127.0.0.1:9", CODO_LANG=lang, CODO_ONLINE="1", DOMA_NO_SYNC="1",
                CODO_APP_LOCAL_ONLY="1", NO_COLOR="1", PYTHONUNBUFFERED="1")
@@ -201,7 +206,7 @@ def pid_alive(pid: int) -> bool:
     if not pid:
         return False
     if os.name == "nt":
-        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True).stdout
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True, encoding="utf-8").stdout
         return str(pid) in out
     try:
         os.kill(pid, 0)
@@ -211,7 +216,7 @@ def pid_alive(pid: int) -> bool:
         return True
     # zombie (już zakończony, czeka na odebranie) to też koniec
     try:
-        st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+        st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, encoding="utf-8").stdout.strip()
         return bool(st) and not st.startswith("Z")
     except OSError:
         return True
@@ -310,7 +315,7 @@ class CodoUiTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.proj = self.root / "projekt"
         self.proj.mkdir()
-        (self.proj / "app.py").write_text("x = 1\n")
+        (self.proj / "app.py").write_text("x = 1\n", encoding="utf-8")
         self.env = make_env(self.root, self.model_url)
         self.p = None
 
@@ -356,7 +361,7 @@ class CodoUiTests(unittest.TestCase):
                                                                  "Origin": "http://evil.localhost"})[0], 403)
 
     def _git(self, *a):
-        return subprocess.run(["git", "-C", str(self.proj), *a], capture_output=True, text=True, check=True).stdout
+        return subprocess.run(["git", "-C", str(self.proj), *a], capture_output=True, text=True, check=True, encoding="utf-8").stdout
 
     def test_zmiany_git_autocrlf_bez_falszywych_zmian(self):
         """Windows: core.autocrlf=true, w repo LF, na dysku CRLF. Okno pokazuje tylko naprawdę zmienioną linię,
@@ -387,7 +392,7 @@ class CodoUiTests(unittest.TestCase):
         (self.proj / "stary.txt").write_bytes(b"stary\n")
         self._git("add", "-A"); self._git("commit", "-qm", "start")
         (self.proj / "a.py").write_bytes(b"a\nB\nc\nd\n")
-        (self.proj / "nowy.txt").write_text("nowy\n")
+        (self.proj / "nowy.txt").write_text("nowy\n", encoding="utf-8")
         (self.proj / "stary.txt").unlink()
         c = self._start()
         st, body, _ = c.req("GET", "/api/changes/list")
@@ -411,20 +416,20 @@ class CodoUiTests(unittest.TestCase):
         # odrzucenie fragmentu w pliku roboczym robi kopię w .doma/backups
         st, _, _ = c.req("POST", "/api/changes/apply", {"p": "a.py", "work": "a\nB\nc\n", "expect_work": f["work_sig"]})
         self.assertEqual(st, 200)
-        self.assertEqual((self.proj / "a.py").read_text(), "a\nB\nc\n")
+        self.assertEqual((self.proj / "a.py").read_text(encoding="utf-8"), "a\nB\nc\n")
         self.assertTrue(list((self.proj / ".doma" / "backups").glob("a.py.*.bak")))
         # cały plik: odrzuć nowy i usunięty, potem cofnij jednym krokiem
         st, _, _ = c.req("POST", "/api/changes/action", {"action": "reject", "paths": ["nowy.txt", "stary.txt"]})
         self.assertEqual(st, 200)
         self.assertFalse((self.proj / "nowy.txt").exists())
-        self.assertEqual((self.proj / "stary.txt").read_text(), "stary\n")
+        self.assertEqual((self.proj / "stary.txt").read_text(encoding="utf-8"), "stary\n")
         st, body, _ = c.req("POST", "/api/changes/undo", {})
         self.assertTrue(json.loads(body)["ok"])
         self.assertTrue((self.proj / "nowy.txt").exists())
         self.assertFalse((self.proj / "stary.txt").exists())
         # cofnij odrzucenie fragmentu i przyjęcie fragmentu: wszystko jak na początku
         c.req("POST", "/api/changes/undo", {}); c.req("POST", "/api/changes/undo", {})
-        self.assertEqual((self.proj / "a.py").read_text(), "a\nB\nc\nd\n")
+        self.assertEqual((self.proj / "a.py").read_text(encoding="utf-8"), "a\nB\nc\nd\n")
         self.assertEqual(self._git("show", ":a.py"), "a\nb\nc\n")
         # przyjmij cały plik = git add, cofnij przyjęcie = reset
         c.req("POST", "/api/changes/action", {"action": "accept", "paths": ["a.py"]})
@@ -448,27 +453,29 @@ class CodoUiTests(unittest.TestCase):
     def test_pr_testy_napraw_i_scal_przez_gh(self):
         """Pilnowanie PR jak PRWatch na Macu: stan testów z gh pr view, logi nieudanych (gh run view --log-failed)
         dla „Napraw teraz”, scalenie auto (repo nie pozwala: Codo scali samo) i od razu. gh to atrapa w PATH."""
-        if os.name == "nt":
-            self.skipTest("atrapa gh jako skrypt sh")
         bin_dir = self.root / "bin"
-        bin_dir.mkdir()
         log = self.root / "gh.log"
-        gh = bin_dir / "gh"
-        gh.write_text("#!/bin/sh\n"
-                      f"echo \"$*\" >> '{log}'\n"
-                      'case "$1 $2" in\n'
-                      '"auth status") exit 0;;\n'
-                      '"pr view") echo \'{"number":7,"url":"https://github.com/a/b/pull/7","state":"OPEN",'
-                      '"mergeable":"MERGEABLE","reviewDecision":"","headRefOid":"abc","statusCheckRollup":['
-                      '{"name":"test","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/a/b/actions/runs/55/job/1"},'
-                      '{"name":"lint","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":""},'
-                      '{"name":"build","status":"IN_PROGRESS","conclusion":""},'
-                      '{"context":"ci/stary","state":"SKIPPED"}]}\'; exit 0;;\n'
-                      '"run view") echo "FAIL test_suma: 99 != 100"; exit 0;;\n'
-                      '"pr merge") case "$*" in *--auto*) echo "Auto merge is not allowed for this repository" >&2; exit 1;; esac;'
-                      ' echo "Merged #7"; exit 0;;\n'
-                      'esac\nexit 1\n')
-        gh.chmod(0o755)
+        view = json.dumps({"number": 7, "url": "https://github.com/a/b/pull/7", "state": "OPEN",
+                           "mergeable": "MERGEABLE", "reviewDecision": "", "headRefOid": "abc", "statusCheckRollup": [
+                               {"name": "test", "status": "COMPLETED", "conclusion": "FAILURE",
+                                "detailsUrl": "https://github.com/a/b/actions/runs/55/job/1"},
+                               {"name": "lint", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": ""},
+                               {"name": "build", "status": "IN_PROGRESS", "conclusion": ""},
+                               {"context": "ci/stary", "state": "SKIPPED"}]})
+        atrapa(bin_dir, "gh", "import sys\n"
+               "a = sys.argv[1:]\n"
+               f"with open({str(log)!r}, 'a', encoding='utf-8') as f:\n"
+               "    f.write(' '.join(a) + '\\n')\n"
+               "k = ' '.join(a[:2])\n"
+               "if k == 'auth status':\n    sys.exit(0)\n"
+               f"if k == 'pr view':\n    print({view!r})\n    sys.exit(0)\n"
+               "if k == 'run view':\n    print('FAIL test_suma: 99 != 100')\n    sys.exit(0)\n"
+               "if k == 'pr merge':\n"
+               "    if '--auto' in a:\n"
+               "        print('Auto merge is not allowed for this repository', file=sys.stderr)\n"
+               "        sys.exit(1)\n"
+               "    print('Merged #7')\n    sys.exit(0)\n"
+               "sys.exit(1)\n")
         c = self._start(PATH=f"{bin_dir}{os.pathsep}{self.env.get('PATH') or os.environ.get('PATH', '')}")
         c.listen()
         self.assertEqual(c.send({"type": "pr", "action": "watch"})[0], 200)
@@ -488,7 +495,7 @@ class CodoUiTests(unittest.TestCase):
         self.assertTrue(m["merge"]["ok"]); self.assertEqual(m["watch"]["number"], 7)
         c.send({"type": "pr", "action": "merge", "number": 0})
         self.assertTrue(c.wait("pr", where=lambda e: e.get("action") == "merge").get("error"))
-        calls = log.read_text()
+        calls = log.read_text(encoding="utf-8")
         self.assertIn("run view 55 --log-failed", calls)
         self.assertIn("pr merge 7 --auto --squash --delete-branch", calls)
         self.assertIn("pr merge 7 --squash --delete-branch", calls)
@@ -496,8 +503,8 @@ class CodoUiTests(unittest.TestCase):
     def test_zmiany_bez_gita_z_kopii(self):
         """Bez gita: „przed” = kopia w .doma/backups, przyjęcie zapisuje wersję odniesienia, nowy plik z silnika."""
         (self.proj / ".doma" / "backups").mkdir(parents=True)
-        (self.proj / ".doma" / "backups" / "app.py.20261127-100000.bak").write_text("x = 0\n")
-        (self.proj / "nowy.md").write_text("# Nowy\n")
+        (self.proj / ".doma" / "backups" / "app.py.20261127-100000.bak").write_text("x = 0\n", encoding="utf-8")
+        (self.proj / "nowy.md").write_text("# Nowy\n", encoding="utf-8")
         c = self._start()
         st, body, _ = c.req("GET", "/api/changes/list?extra=nowy.md")
         d = json.loads(body)
@@ -515,7 +522,7 @@ class CodoUiTests(unittest.TestCase):
         items = json.loads(c.req("GET", "/api/changes/backups?p=app.py")[1])["items"]
         self.assertEqual(items[0]["name"], "app.py.20261127-100000.bak")
         self.assertEqual(c.req("POST", "/api/changes/restore", {"p": "app.py", "name": items[0]["name"]})[0], 200)
-        self.assertEqual((self.proj / "app.py").read_text(), "x = 0\n")
+        self.assertEqual((self.proj / "app.py").read_text(encoding="utf-8"), "x = 0\n")
 
     def test_hive_odczyt_i_zapis_jak_na_macu(self):
         c = self._start()
@@ -633,7 +640,7 @@ class CodoUiTests(unittest.TestCase):
         edit = next(e for e in c.all if e["type"] == "edit")
         self.assertEqual(edit["plik"], "notatka.md")
         self.assertIn("+# Notatka", edit["diff"])
-        self.assertEqual((self.proj / "notatka.md").read_text(), NOTE)
+        self.assertEqual((self.proj / "notatka.md").read_text(encoding="utf-8"), NOTE)
         tools = [e for e in c.all if e["type"] == "tool"]
         self.assertTrue(any("gotowe" in " ".join(e.get("wynik") or []) for e in tools), tools)
         tool_msgs = [m for m in FakeModel.calls[-1]["messages"] if m.get("role") == "tool"]
@@ -756,7 +763,7 @@ class CodoUiTests(unittest.TestCase):
     def test_bez_konta_strona_pokazuje_logowanie(self):
         cfg = Path(self.env["DOMA_CONFIG_DIR"])
         (cfg / "konta.json").unlink()
-        (cfg / "settings.json").write_text(json.dumps({"lang": "pl", "agents_off": True}))   # bez agentów z tego komputera
+        (cfg / "settings.json").write_text(json.dumps({"lang": "pl", "agents_off": True}), encoding="utf-8")   # bez agentów z tego komputera
         c = self._start()
         c.listen()
         ready = c.wait("ready")
@@ -768,7 +775,7 @@ class CodoUiTests(unittest.TestCase):
     def _login_env(self):
         cfg = Path(self.env["DOMA_CONFIG_DIR"])
         (cfg / "konta.json").unlink()
-        (cfg / "settings.json").write_text(json.dumps({"lang": "pl", "agents_off": True}))
+        (cfg / "settings.json").write_text(json.dumps({"lang": "pl", "agents_off": True}), encoding="utf-8")
         srv, url = start_fake_domaai()
         self.addCleanup(srv.shutdown)
         FakeDomaAI.calls.clear()
@@ -798,8 +805,8 @@ class CodoUiTests(unittest.TestCase):
         self.assertEqual((e["email"], e["plan"], e["device"]), ("marta@example.com", "base", "Komputer testowy"))
         st = c.wait("status", where=lambda x: x.get("domaai"))
         self.assertTrue(st["signed_in"])
-        self.assertEqual(json.loads((cfg / "device.json").read_text())["device_id"], "dev1")
-        self.assertEqual(json.loads((cfg / "account.json").read_text())["email"], "marta@example.com")
+        self.assertEqual(json.loads((cfg / "device.json").read_text(encoding="utf-8"))["device_id"], "dev1")
+        self.assertEqual(json.loads((cfg / "account.json").read_text(encoding="utf-8"))["email"], "marta@example.com")
         c.req("POST", "/api/quit", {})
         self.p.wait(20)
         c.close()
@@ -842,7 +849,7 @@ class CodoUiTests(unittest.TestCase):
         lic = json.loads(body)
         self.assertEqual((code, lic["use"], lic["needs_acceptance"]), (200, "company", False))
         self.assertTrue(lic["company_since"] and lic["accepted_at"])
-        self.assertEqual(json.loads((cfg / "license.json").read_text())["accepted"], 2)
+        self.assertEqual(json.loads((cfg / "license.json").read_text(encoding="utf-8"))["accepted"], 2)
         # strona ma ekran logowania i pytanie o licencję (moduł 45-account)
         html = c.req("GET", "/")[1].decode("utf-8")
         for k in ("acctHoldsCreator", "/api/license", "Sign in to Codo", "How will you use Codo?"):
@@ -854,12 +861,12 @@ class CodoUiTests(unittest.TestCase):
         sub = self.proj / "Dokumenty klienta"
         sub.mkdir()
         (sub / "zamówienie łódź.csv").write_text("nazwa,ilość\njabłka,3\n", encoding="utf-8")
-        (self.proj / "obraz.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+        (self.proj / "obraz.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>', encoding="utf-8")
         (self.proj / "faktura.pdf").write_bytes(b"%PDF-1.4\n%%EOF\n")
         (self.proj / "dane.bin").write_bytes(b"\x00\x01\x02" * 50)
         secret = self.root / "poza" / "tajne.txt"
         secret.parent.mkdir()
-        secret.write_text("tajne")
+        secret.write_text("tajne", encoding="utf-8")
         try:
             os.symlink(secret, self.proj / "skrot.txt")
         except (OSError, NotImplementedError):
@@ -960,7 +967,7 @@ class CodoUiOsadzenieTests(unittest.TestCase):
         tool = Path(__file__).resolve().parents[1] / "scripts/osadz-codo-ui.py"
         if os.environ.get("CODO_FILE") or not src.exists() or not tool.exists():
             self.skipTest("poza repozytorium (np. publiczne wydanie z jednym plikiem)")
-        r = subprocess.run([sys.executable, str(tool), "--check"], capture_output=True, text=True, timeout=60)
+        r = subprocess.run([sys.executable, str(tool), "--check"], capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_slownik_pl_en_w_stronie(self):
@@ -983,6 +990,11 @@ class TestLogoDostawcow(unittest.TestCase):
     konto → strona marki, i każda taka strona ma obrazek w 06-logos.js."""
     maxDiff = None
     UI = Path(__file__).resolve().parents[1] / "static/cli/ui"
+
+    def setUp(self):
+        if not (self.UI / "07-sites.js").exists():
+            self.skipTest("poza repozytorium (np. publiczne wydanie z jednym plikiem)")
+
     MODELE = {
         "lopus": "domaai.pl", "lopus-pro": "domaai.pl",
         "anthropic/claude-opus-5-5": "claude.ai", "claude-sonnet-4-5": "claude.ai", "@anthropic/claude-haiku-4-5": "claude.ai",
@@ -1097,7 +1109,7 @@ out.seedSame = String(orbSeed(viol.pal)) === String(orbSeed(viol.pal.slice()));
 out.blend = orbBlend([0,0,0,1], [1,1,1,1], 0.5);
 console.log(JSON.stringify(out));
 """)
-        r = subprocess.run([node, "-"], input=prog, capture_output=True, text=True, timeout=30)
+        r = subprocess.run([node, "-"], input=prog, capture_output=True, text=True, timeout=30, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stderr)
         o = json.loads(r.stdout)
         self.assertEqual((o["mix"], o["eyes"], o["shape"]), (2, "#151517", "kostka"))
@@ -1126,6 +1138,8 @@ class TestRoznicePanelZmiany(unittest.TestCase):
         if not node:
             self.skipTest("brak node")
         src = Path(__file__).resolve().parents[1] / "static/cli/ui/16-diff.js"
+        if not src.exists():
+            self.skipTest("poza repozytorium (np. publiczne wydanie z jednym plikiem)")
         prog = src.read_text(encoding="utf-8") + r"""
 let rnd = 7; const R = () => { rnd = (rnd * 1103515245 + 12345) % 2147483648; return rnd / 2147483648; };
 let bad = 0, foreign = 0;
@@ -1144,7 +1158,7 @@ const t0 = Date.now(), bb = dfBlocks(big, big2), ms = Date.now() - t0;
 const hl = dfHighlight('def f():\n    return "x"  # c', "python");
 console.log(JSON.stringify({ bad, foreign, ms, big: dfApply(big, big2, bb, () => true) === big2.join("\n"), hl }));
 """
-        out = subprocess.run([node, "-"], input=prog, capture_output=True, text=True, timeout=120)
+        out = subprocess.run([node, "-"], input=prog, capture_output=True, text=True, timeout=120, encoding="utf-8")
         self.assertEqual(out.returncode, 0, out.stderr)
         r = json.loads(out.stdout.strip().splitlines()[-1])
         self.assertEqual(r["bad"], 0)

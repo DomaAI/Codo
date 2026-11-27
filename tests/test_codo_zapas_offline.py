@@ -12,6 +12,11 @@ import unittest
 import urllib.error
 from pathlib import Path
 from unittest.mock import patch
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -94,20 +99,18 @@ class ZapasAppServerTests(unittest.TestCase):
         root = Path(tmp.name)
         cfg = root / "cfg"
         cfg.mkdir()
-        (cfg / "settings.json").write_text(json.dumps(settings))
+        (cfg / "settings.json").write_text(json.dumps(settings), encoding="utf-8")
         proj = root / "proj"
         proj.mkdir()
-        (proj / "app.py").write_text("x = 1\n")
+        (proj / "app.py").write_text("x = 1\n", encoding="utf-8")
         env = dict(os.environ, DOMA_CONFIG_DIR=str(cfg), DOMA_API_URL="http://127.0.0.1:9",
                    FAKE_LOG=str(root / "log"), CODO_LANG="pl", DOMA_NO_SYNC="1", CODO_NO_HISTORY="1")
         for kind, code in base._FAKE.items():
-            f = root / kind
-            f.write_text(f"#!{sys.executable}\n" + textwrap.dedent(code))
-            f.chmod(0o755)
+            f = atrapa(root, kind, textwrap.dedent(code))
             env[f"CODO_AGENT_{kind.upper()}"] = str(f)
         env.update(env_extra)
         p = subprocess.Popen([sys.executable, SCRIPT, "app-server"], cwd=proj, env=env, text=True,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8")
         events = [json.loads(p.stdout.readline())]
         p.stdin.write(json.dumps({"type": "send", "text": text}) + "\n")
         p.stdin.flush()
@@ -115,7 +118,7 @@ class ZapasAppServerTests(unittest.TestCase):
             events.append(json.loads(line))
             if events[-1]["type"] == "turn_end":
                 break
-        p.stdin.close()
+        zamknij_stdin(p)
         p.wait(10)
         err = p.stderr.read()
         self.assertNotIn("Traceback", err)
@@ -149,7 +152,8 @@ class FirmaTests(unittest.TestCase):
 
     def test_key_saved_private_and_sent_as_header(self):
         cli.save_firma("dfk_abcd_sekret")
-        self.assertEqual(oct(os.stat(cli.FIRMA_FILE).st_mode & 0o777), "0o600")
+        if os.name != "nt":   # prawa POSIX
+            self.assertEqual(oct(os.stat(cli.FIRMA_FILE).st_mode & 0o777), "0o600")
         self.assertEqual(cli.firma_headers(), {"X-Codo-Firma": "dfk_abcd_sekret"})
         seen = {}
 
@@ -209,7 +213,8 @@ class AgentKreatorTests(unittest.TestCase):
             self.assertEqual(p["agent"], "Nova")
             self.assertEqual(p["kolory_agenta"], ["#7C5CFF", "#14B8A6"])
             self.assertEqual(p["cechy"], ["forma:ty", "emoji:nie"])
-            self.assertEqual(oct(os.stat(cli.AGENT_LOCAL_FILE).st_mode & 0o777), "0o600")
+            if os.name != "nt":   # prawa POSIX
+                self.assertEqual(oct(os.stat(cli.AGENT_LOCAL_FILE).st_mode & 0o777), "0o600")
             a = cli._app_agent()
             self.assertEqual((a["name"], a["shape"], a["local"]), ("Nova", "chmurka", True))
             self.assertIn("Nova", cli._persona_block())

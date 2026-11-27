@@ -14,6 +14,11 @@ import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
 
 _ROOT = Path(tempfile.mkdtemp(prefix="codo-grupy-")).resolve()
 _HOME = _ROOT / "home"
@@ -23,7 +28,7 @@ os.environ.update(HOME=str(_HOME), USERPROFILE=str(_HOME), DOMA_CONFIG_DIR=str(_
                   DOMA_API_URL="http://127.0.0.1:9", CODO_LANG="pl", DOMA_NO_SYNC="1", CODO_APP_LOCAL_ONLY="1")
 for _k in ("CODO_ZESPOL_DIR", "CODO_ZESPOL_CZLONEK", "CODO_PROVIDER", "CODO_APP_MODE", "CODO_NO_HISTORY"):
     os.environ.pop(_k, None)
-(_CFG / "settings.json").write_text(json.dumps({"agents_off": True, "lang": "pl"}))
+(_CFG / "settings.json").write_text(json.dumps({"agents_off": True, "lang": "pl"}), encoding="utf-8")
 
 SCRIPT = str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma"))
 _loader = importlib.machinery.SourceFileLoader("codo_grupy", SCRIPT)
@@ -331,7 +336,7 @@ class SposobyTests(_Base):
 
 def git(path, *args):
     r = subprocess.run(["git", "-C", str(path), "-c", "user.name=T", "-c", "user.email=t@e.pl", *args],
-                       capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, encoding="utf-8")
     assert r.returncode == 0, r.stderr
     return r.stdout.strip()
 
@@ -341,13 +346,13 @@ class KopieTests(_Base):
         proj = _ROOT / "repo-kopie"
         proj.mkdir()
         git(proj, "init", "-q", "-b", "main")
-        (proj / "a.txt").write_text("start\n")
+        (proj / "a.txt").write_text("start\n", encoding="utf-8")
         git(proj, "add", "-A")
         git(proj, "commit", "-q", "-m", "start")
 
         class Writer(FakeMember):
             def _answer(self, text):
-                Path(self.cwd, f"{self.m['id']}.txt").write_text("od " + self.m["id"] + "\n")
+                Path(self.cwd, f"{self.m['id']}.txt").write_text("od " + self.m["id"] + "\n", encoding="utf-8")
                 super()._answer(text)
         FakeMember.script = staticmethod(lambda mid, brain, text: (True, "Zrobione " + mid, 0, ""))
         ms = [dict(m, writes=True) for m in members3()[:2]]
@@ -369,7 +374,7 @@ class PodzialKoduTests(_Base):
         proj = _ROOT / "repo-zespol"
         proj.mkdir()
         git(proj, "init", "-q", "-b", "main")
-        (proj / "a.txt").write_text("start\n")
+        (proj / "a.txt").write_text("start\n", encoding="utf-8")
         git(proj, "add", "-A")
         git(proj, "commit", "-q", "-m", "start")
         spawned = []
@@ -449,12 +454,10 @@ class ProcesyTests(unittest.TestCase):
         cfg.mkdir(parents=True)
         (cfg / "konta.json").write_text(json.dumps({"konta": {"atrapa": {
             "base_url": f"http://127.0.0.1:{self.srv.server_address[1]}/v1", "api_key": "sk-test", "name": "Atrapa",
-            "model": "atrapa-1"}}, "aktywne": "atrapa"}))
+            "model": "atrapa-1"}}, "aktywne": "atrapa"}), encoding="utf-8")
         (cfg / "settings.json").write_text(json.dumps({"provider": "endpoint", "model_endpoint": "@atrapa/atrapa-1",
-                                                       "lang": "pl"}))
-        codex = self.root / "codex"
-        codex.write_text(f"#!{sys.executable}\n" + _FAKE_CODEX)
-        codex.chmod(0o755)
+                                                       "lang": "pl"}), encoding="utf-8")
+        codex = atrapa(self.root, "codex", _FAKE_CODEX)
         self.env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), DOMA_CONFIG_DIR=str(cfg), CODO_LANG="pl",
                         CODO_ONLINE="1", NO_COLOR="1", PYTHONUNBUFFERED="1", CODO_TEAM_SCRIPT=SCRIPT,
                         CODO_AGENT_CODEX=str(codex), CODO_AGENT_CLAUDE="/brak", CODO_AGENT_GEMINI="/brak")
@@ -467,7 +470,7 @@ class ProcesyTests(unittest.TestCase):
 
     def test_app_server_grupa_z_dwoch_dostawcow(self):
         p = subprocess.Popen([sys.executable, SCRIPT, "app-server"], cwd=self.proj, env=self.env,
-                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
         seen = []
 
         def send(**o):
@@ -515,21 +518,21 @@ class ProcesyTests(unittest.TestCase):
             wait("group_started")
             self.assertTrue((self.cfg / "grupy.json").exists())
         finally:
-            p.stdin.close()
+            zamknij_stdin(p)
             p.wait(timeout=20)
 
     def test_codo_grupa_w_terminalu(self):
         r = subprocess.run([sys.executable, SCRIPT, "grupa", "nowa", "Para", "agent:codex=Kodeks", "@atrapa/atrapa-1=Konto",
                             "--sposob", "pipeline"], cwd=self.proj, env=self.env, capture_output=True, text=True,
-                           timeout=60, stdin=subprocess.DEVNULL)
+                           timeout=60, stdin=subprocess.DEVNULL, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         r = subprocess.run([sys.executable, SCRIPT, "grupa", "run", "Para", "Opisz potok"], cwd=self.proj, env=self.env,
-                           capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL)
+                           capture_output=True, text=True, timeout=120, stdin=subprocess.DEVNULL, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("Krok 2 z 2: Konto", r.stdout)
         self.assertIn("Konto mówi", r.stdout)
         r = subprocess.run([sys.executable, SCRIPT, "grupa", "list"], cwd=self.proj, env=self.env, capture_output=True,
-                           text=True, timeout=60, stdin=subprocess.DEVNULL)
+                           text=True, timeout=60, stdin=subprocess.DEVNULL, encoding="utf-8")
         self.assertIn("Kodeks", r.stdout)
 
 

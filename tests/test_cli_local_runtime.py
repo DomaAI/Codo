@@ -32,9 +32,9 @@ class LocalRuntimeTests(unittest.TestCase):
             try:
                 os.chdir(temp)
                 Path("src").mkdir()
-                Path("src/app.py").write_text("needle\n")
+                Path("src/app.py").write_text("needle\n", encoding="utf-8")
                 Path("node_modules").mkdir()
-                Path("node_modules/dependency.py").write_text("needle\n")
+                Path("node_modules/dependency.py").write_text("needle\n", encoding="utf-8")
                 result = cli.t_grep({"pattern": "needle", "glob": "*.py"})
                 self.assertIn("src/app.py:1", result)
                 self.assertNotIn("dependency", result)
@@ -142,13 +142,13 @@ class Codo017Tests(unittest.TestCase):
         self.assertEqual(Path("u.txt").read_bytes(), b"\xef\xbb\xbfa\nB\n")
 
     def test_restore_takes_newest_backup_of_this_file_only(self):
-        Path("style.css").write_text("v0")
-        Path("style.css.map").write_text("m0")
+        Path("style.css").write_text("v0", encoding="utf-8")
+        Path("style.css.map").write_text("m0", encoding="utf-8")
         for version in ("v1", "v2", "v3"):          # ta sama sekunda: kopie .TS, .TS-1, .TS-2
             cli.t_write_file({"path": "style.css", "content": version})
         cli.t_write_file({"path": "style.css.map", "content": "m1"})
         cli.t_restore({"path": "style.css"})
-        self.assertEqual(Path("style.css").read_text(), "v2")
+        self.assertEqual(Path("style.css").read_text(encoding="utf-8"), "v2")
 
     @unittest.skipIf(os.name == "nt", "grupy procesów POSIX")
     def test_run_command_timeout_kills_children(self):
@@ -159,7 +159,7 @@ class Codo017Tests(unittest.TestCase):
         self.assertTrue(result.startswith("BŁĄD"))
         self.assertIn("start", result)
         time.sleep(0.3)
-        alive = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True).stdout.split()
+        alive = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True, encoding="utf-8").stdout.split()
         self.assertEqual(alive, [])
 
     def test_compaction_keeps_skill_context(self):
@@ -172,8 +172,8 @@ class Codo017Tests(unittest.TestCase):
 
     def test_find_files_double_star_matches_direct_children(self):
         Path("src/sub").mkdir(parents=True)
-        Path("src/a.ts").write_text("")
-        Path("src/sub/b.ts").write_text("")
+        Path("src/a.ts").write_text("", encoding="utf-8")
+        Path("src/sub/b.ts").write_text("", encoding="utf-8")
         found = cli.t_find_files({"pattern": "src/**/*.ts"}).split()
         self.assertEqual(sorted(found), ["src/a.ts", "src/sub/b.ts"])
 
@@ -187,9 +187,9 @@ class Codo017Tests(unittest.TestCase):
 
     def test_project_notes_codo_md_with_legacy_fallback(self):
         self.assertEqual(cli.APP_NAME, "Codo")
-        Path("DOMAAI.md").write_text("stare ustalenia")
+        Path("DOMAAI.md").write_text("stare ustalenia", encoding="utf-8")
         self.assertIn("stare ustalenia", cli._project_notes())
-        Path("Codo.md").write_text("nowe ustalenia")
+        Path("Codo.md").write_text("nowe ustalenia", encoding="utf-8")
         self.assertIn("nowe ustalenia", cli._project_notes())
         self.assertEqual(cli._project_notes_file().name, "Codo.md")
 
@@ -244,8 +244,8 @@ class Codo017Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
             (root / ".codo" / "commands").mkdir(parents=True)
-            (root / ".codo" / "commands" / "wdroz.md").write_text("x")
-            (root / "a.py").write_text("x")
+            (root / ".codo" / "commands" / "wdroz.md").write_text("x", encoding="utf-8")
+            (root / "a.py").write_text("x", encoding="utf-8")
             with patch.object(cli.Path, "home", return_value=root):
                 facts, warnings = cli._trust_facts(root)
         self.assertTrue(any("katalog domowy" in w for w in warnings))
@@ -365,9 +365,9 @@ class Codo020Tests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_mentions_attach_files_and_skip_emails(self):
-        Path("app.py").write_text("print('hej')\n")
+        Path("app.py").write_text("print('hej')\n", encoding="utf-8")
         Path("src").mkdir()
-        Path("src/a.js").write_text("x")
+        Path("src/a.js").write_text("x", encoding="utf-8")
         text, names = cli._expand_mentions("popraw @app.py i zobacz @src, pisz do jan@firma.pl lub @nikt")
         self.assertEqual(names, ["app.py", "src"])
         self.assertIn("<plik sciezka=\"app.py\">", text)
@@ -379,15 +379,15 @@ class Codo020Tests(unittest.TestCase):
 
     def test_mention_binary_and_limit(self):
         Path("bin.dat").write_bytes(b"\x00\x01" * 10)
-        Path("big.txt").write_text("a" * (cli._ATTACH_FILE_MAX + 50))
+        Path("big.txt").write_text("a" * (cli._ATTACH_FILE_MAX + 50), encoding="utf-8")
         text, _ = cli._expand_mentions("@bin.dat @big.txt")
         self.assertIn("plik binarny", text)
         self.assertIn("ucięte", text)
 
     def test_at_completion(self):
         Path("src").mkdir()
-        Path("src/main.py").write_text("")
-        Path("setup.py").write_text("")
+        Path("src/main.py").write_text("", encoding="utf-8")
+        Path("setup.py").write_text("", encoding="utf-8")
         self.assertEqual(cli._at_matches("zobacz @s"), [("@src/", "folder"), ("@setup.py", "plik")])
         self.assertEqual(cli._at_matches("@src/m"), [("@src/main.py", "plik")])
         self.assertEqual(cli._at_matches("/model"), [])
@@ -419,8 +419,8 @@ class Codo020Tests(unittest.TestCase):
 
     def test_user_commands(self):
         Path(".codo/commands").mkdir(parents=True)
-        Path(".codo/commands/Review.md").write_text("---\ndescription: przegląd zmian\n---\nPrzejrzyj $ARGUMENTS\n")
-        Path(".codo/commands/help.md").write_text("nie nadpisuj wbudowanej")
+        Path(".codo/commands/Review.md").write_text("---\ndescription: przegląd zmian\n---\nPrzejrzyj $ARGUMENTS\n", encoding="utf-8")
+        Path(".codo/commands/help.md").write_text("nie nadpisuj wbudowanej", encoding="utf-8")
         with patch.object(cli, "CONFIG_DIR", Path(self.tmp.name) / "cfg"):
             cmds = cli._user_commands()
         self.assertIn("/review", cmds)
@@ -593,7 +593,7 @@ class Codo020MaratonTests(unittest.TestCase):
         st = cli._wjson("stan.json")
         self.assertEqual(st["status"], "zakończona")
         self.assertEqual(st["segments"], 2)
-        self.assertIn("PRACA ZAKOŃCZONA", Path(".doma/work/dziennik.md").read_text())
+        self.assertIn("PRACA ZAKOŃCZONA", Path(".doma/work/dziennik.md").read_text(encoding="utf-8"))
 
     def test_done_mark_with_open_plan_continues(self):
         def premature(messages):

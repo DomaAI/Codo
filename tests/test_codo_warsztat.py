@@ -7,6 +7,11 @@ import threading
 import time
 import unittest
 from pathlib import Path
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import zamknij_stdin  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -156,7 +161,7 @@ class KsztaltAgentaTests(unittest.TestCase):
         env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg)
         p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")), "app-server"],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                             text=True, env=env, cwd=cfg)
+                             text=True, env=env, cwd=cfg, encoding="utf-8")
         for m in wiadomosci:
             p.stdin.write(json.dumps(m) + "\n")
         p.stdin.flush()
@@ -172,7 +177,7 @@ class KsztaltAgentaTests(unittest.TestCase):
                         break
         finally:
             p.stdin.write(json.dumps({"type": "quit"}) + "\n")
-            p.stdin.close()
+            zamknij_stdin(p)
             p.wait(20)
         return out
 
@@ -181,7 +186,7 @@ class KsztaltAgentaTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as cfg:
             self._serwer(cfg, [{"type": "agent_create", "name": "Kuba", "color": "#7C5CFF", "shape": "kula"},
                                {"type": "agent_shape", "shape": "kostka"}, {"type": "status"}], "status")
-            st = json.loads(Path(cfg, "settings.json").read_text())
+            st = json.loads(Path(cfg, "settings.json").read_text(encoding="utf-8"))
             self.assertEqual(st.get("agent_ksztalt"), "kostka")
             out = self._serwer(cfg, [{"type": "status"}], "status")
             agenci = [m.get("agent") for m in out if m.get("type") == "status" and m.get("agent")]
@@ -227,12 +232,12 @@ class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         try:
             with tempfile.TemporaryDirectory() as cfg:
-                Path(cfg, "credentials.json").write_text(json.dumps({"access_token": "t", "refresh_token": "r"}))
+                Path(cfg, "credentials.json").write_text(json.dumps({"access_token": "t", "refresh_token": "r"}), encoding="utf-8")
                 env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg,
                            DOMA_API_URL=f"http://127.0.0.1:{srv.server_address[1]}")
                 p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")),
                                       "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, text=True, env=env, cwd=cfg)
+                                     stderr=subprocess.DEVNULL, text=True, env=env, cwd=cfg, encoding="utf-8")
                 p.stdin.write(json.dumps({"type": "agent_create", "name": "Kuba", "color": "#7C5CFF",
                                           "shape": "kula"}) + "\n")
                 p.stdin.flush()
@@ -255,7 +260,7 @@ class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
                 finally:
                     if p.poll() is None:
                         p.stdin.write(json.dumps({"type": "quit"}) + "\n")
-                        p.stdin.close()
+                        zamknij_stdin(p)
                         p.wait(20)
                 self.assertIsNotNone(zapis)
                 self.assertTrue(zapis.get("ok"))
@@ -276,7 +281,7 @@ class WorkflowKanalyTests(unittest.TestCase):
             env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg)
             p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")), "app-server"],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                 text=True, env=env, cwd=cfg)
+                                 text=True, env=env, cwd=cfg, encoding="utf-8")
             p.stdin.write(json.dumps({"type": "workflow", "name": "Powiadom", "input": wejscie,
                                       "nodes": nodes, "edges": edges}) + "\n")
             p.stdin.flush()
@@ -298,7 +303,7 @@ class WorkflowKanalyTests(unittest.TestCase):
                         break
             finally:
                 p.stdin.write(json.dumps({"type": "quit"}) + "\n")
-                p.stdin.close()
+                zamknij_stdin(p)
                 p.wait(20)
             return out, mosty
 

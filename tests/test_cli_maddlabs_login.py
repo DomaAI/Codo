@@ -6,7 +6,9 @@ import importlib.util
 import json
 from pathlib import Path
 
-import pytest
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import jako_unittest, pytest  # noqa: E402
 
 loader = importlib.machinery.SourceFileLoader(
     "doma_cli_maddlabs", str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")))
@@ -40,9 +42,10 @@ def test_klucz_api_zapisany_prywatnie_i_aktywny(konfig, monkeypatch):
     monkeypatch.setattr(cli, "_maddlabs_http", fake)
     assert cli.login_maddlabs_key("sk-test-123") == 0
     assert calls == [("GET", "/key", "sk-test-123")]
-    zapis = json.loads((konfig / "maddlabs.json").read_text())
+    zapis = json.loads((konfig / "maddlabs.json").read_text(encoding="utf-8"))
     assert zapis["api_key"] == "sk-test-123" and zapis["how"] == "klucz"
-    assert oct((konfig / "maddlabs.json").stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":   # prawa POSIX; na Windows plik i tak leży w profilu użytkownika
+        assert oct((konfig / "maddlabs.json").stat().st_mode & 0o777) == "0o600"
     assert cli.provider() == "maddlabs" and cli._model_key() == "model_maddlabs"
 
 
@@ -95,7 +98,7 @@ def test_konto_maddlabs_przez_przegladarke(konfig, monkeypatch):
 
     monkeypatch.setattr(cli, "_maddlabs_http", fake)
     assert cli.login_maddlabs_account() == 0
-    zapis = json.loads((konfig / "maddlabs.json").read_text())
+    zapis = json.loads((konfig / "maddlabs.json").read_text(encoding="utf-8"))
     assert zapis["api_key"] == "sk-konto" and zapis["how"] == "konto" and zapis["account"] == "ML123456"
     assert cli.provider() == "maddlabs"
 
@@ -115,7 +118,7 @@ def test_login_menu_aliasy_i_powrot_do_domaai(konfig, monkeypatch):
 def _maddlabs_i_domaai(konfig, monkeypatch):
     monkeypatch.delenv("CODO_MADDLABS_DIRECT", raising=False)
     cli._maddlabs_save({"api_key": "sk-x", "base_url": "https://maddlabs.co/v1"})
-    (konfig / "device.json").write_text(json.dumps({"device_id": "d1", "device_secret": "t", "name": "mac"}))
+    (konfig / "device.json").write_text(json.dumps({"device_id": "d1", "device_secret": "t", "name": "mac"}), encoding="utf-8")
     cli.SESSION.pop("maddlabs_direct", None)
     cli.SESSION.update(turn_steps=0, turn_spent=0)
 
@@ -195,3 +198,6 @@ def test_lopus_turn_wysyla_mozg_madd(konfig, monkeypatch):
     assert blad.value.status == 503
     assert wyslane["mozg"] == "madd" and wyslane["model_maddlabs"] == "qwen/qwen3.8-27b"
     assert wyslane["variant"] == "pro" and wyslane["description"] == "znajdź w sieci"
+
+
+load_tests = jako_unittest(globals())

@@ -14,6 +14,8 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -332,7 +334,7 @@ class AppServerUmiejetnosciTests(unittest.TestCase):
         env = dict(os.environ, HOME=str(tmp), DOMA_CONFIG_DIR=str(tmp / ".config/doma"), CODO_LANG="pl",
                    DOMA_API_URL="http://127.0.0.1:9", DOMA_NO_SYNC="1", CODO_NO_HISTORY="1")
         proc = subprocess.Popen([sys.executable, str(_CLI_FILE), "app-server"], cwd=proj, env=env,
-                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, encoding="utf-8")
         lines = []
         try:
             def wait_for(kind, n=1):

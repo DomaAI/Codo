@@ -238,14 +238,14 @@ class BigAndBinary(InFolder):
 
 class EditTolerance(InFolder):
     def test_ambiguous_lists_line_numbers(self):
-        Path("f.py").write_text("x = 1\ny = 2\nx = 1\n")
+        Path("f.py").write_text("x = 1\ny = 2\nx = 1\n", encoding="utf-8")
         r = cli.t_edit_file({"path": "f.py", "old_string": "x = 1", "new_string": "x = 3"})
         self.assertIn("2×", r)
         self.assertIn("linie 1, 3", r)
-        self.assertEqual(Path("f.py").read_text(), "x = 1\ny = 2\nx = 1\n")
+        self.assertEqual(Path("f.py").read_text(encoding="utf-8"), "x = 1\ny = 2\nx = 1\n")
 
     def test_not_found_shows_most_similar_fragment(self):
-        Path("f.py").write_text("def a():\n    pass\n\n\ndef policz(cena, ilosc):\n    return cena * ilosc\n")
+        Path("f.py").write_text("def a():\n    pass\n\n\ndef policz(cena, ilosc):\n    return cena * ilosc\n", encoding="utf-8")
         r = cli.t_edit_file({"path": "f.py", "old_string": "def policz(cena, ilość):\n    return cena * ilość",
                              "new_string": "x"})
         self.assertTrue(r.startswith("BŁĄD"), r)
@@ -253,72 +253,73 @@ class EditTolerance(InFolder):
         self.assertIn("5\tdef policz(cena, ilosc):", r)
 
     def test_trailing_whitespace_tolerated(self):
-        Path("f.js").write_text("const a = 1;   \nconst b = 2;\t\n")
+        Path("f.js").write_text("const a = 1;   \nconst b = 2;\t\n", encoding="utf-8")
         r = cli.t_edit_file({"path": "f.js", "old_string": "const a = 1;\nconst b = 2;", "new_string": "const c = 3;"})
         self.assertIn("spacje na końcu", r)
-        self.assertEqual(Path("f.js").read_text(), "const c = 3;\n")
+        self.assertEqual(Path("f.js").read_text(encoding="utf-8"), "const c = 3;\n")
 
     def test_indent_tolerated_and_new_string_reindented(self):
-        Path("f.py").write_text("class A:\n    def f(self):\n        return 1\n")
+        Path("f.py").write_text("class A:\n    def f(self):\n        return 1\n", encoding="utf-8")
         r = cli.t_edit_file({"path": "f.py", "old_string": "def f(self):\n    return 1",
                              "new_string": "def f(self):\n    x = 2\n    return x"})
         self.assertIn("inne wcięcie", r)
-        self.assertEqual(Path("f.py").read_text(), "class A:\n    def f(self):\n        x = 2\n        return x\n")
+        self.assertEqual(Path("f.py").read_text(encoding="utf-8"), "class A:\n    def f(self):\n        x = 2\n        return x\n")
 
     def test_line_number_prefixes_from_read_file_stripped(self):
-        Path("f.txt").write_text("alfa\nbeta\ngamma\n")
+        Path("f.txt").write_text("alfa\nbeta\ngamma\n", encoding="utf-8")
         r = cli.t_edit_file({"path": "f.txt", "old_string": "     2\tbeta\n     3\tgamma", "new_string": "BETA\nGAMMA"})
         self.assertFalse(r.startswith("BŁĄD"), r)
-        self.assertEqual(Path("f.txt").read_text(), "alfa\nBETA\nGAMMA\n")
+        self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), "alfa\nBETA\nGAMMA\n")
 
     def test_typographic_quotes_and_inline_spaces(self):
-        Path("f.html").write_text('<p class="a">Mówi „cześć” — i idzie</p>\n')
+        Path("f.html").write_text('<p class="a">Mówi „cześć” — i idzie</p>\n', encoding="utf-8")
         r = cli.t_edit_file({"path": "f.html", "old_string": 'Mówi "cześć" - i  idzie', "new_string": "Wychodzi"})
         self.assertFalse(r.startswith("BŁĄD"), r)
-        self.assertEqual(Path("f.html").read_text(), '<p class="a">Wychodzi</p>\n')
+        self.assertEqual(Path("f.html").read_text(encoding="utf-8"), '<p class="a">Wychodzi</p>\n')
 
     def test_tolerance_never_guesses_between_two_places(self):
-        Path("f.py").write_text("if a:\n    go()\nif b:\n  if a:\n      go()\n")
+        Path("f.py").write_text("if a:\n    go()\nif b:\n  if a:\n      go()\n", encoding="utf-8")
         r = cli.t_edit_file({"path": "f.py", "old_string": "if a:\n  go()", "new_string": "x"})
         self.assertIn("2 miejscach", r)
 
     def test_multi_edit_atomic_with_hint_and_replace_all(self):
-        Path("f.txt").write_text("a\nb\na\n")
+        Path("f.txt").write_text("a\nb\na\n", encoding="utf-8")
         r = cli.t_multi_edit({"path": "f.txt", "edits": [{"old_string": "b", "new_string": "B"},
                                                           {"old_string": "zzz", "new_string": "q"}]})
         self.assertIn("edit #2 z 2", r)
         self.assertIn("NIE zostały zapisane", r)
-        self.assertEqual(Path("f.txt").read_text(), "a\nb\na\n")
+        self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), "a\nb\na\n")
         r = cli.t_multi_edit({"path": "f.txt", "edits": json.dumps([{"old_string": "a", "new_string": "A", "replace_all": True}])})
         self.assertFalse(r.startswith("BŁĄD"), r)
-        self.assertEqual(Path("f.txt").read_text(), "A\nb\nA\n")
+        self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), "A\nb\nA\n")
 
     def test_identical_and_missing_file(self):
-        Path("f.txt").write_text("a\n")
+        Path("f.txt").write_text("a\n", encoding="utf-8")
         self.assertIn("identyczne", cli.t_edit_file({"path": "f.txt", "old_string": "a", "new_string": "a"}))
         self.assertIn("write_file", cli.t_edit_file({"path": "nowy.txt", "old_string": "a", "new_string": "b"}))
 
 
 class AtomicWrite(InFolder):
     def test_read_only_file_is_not_overwritten(self):
-        Path("ro.txt").write_text("stare\n")
+        Path("ro.txt").write_text("stare\n", encoding="utf-8")
         os.chmod("ro.txt", 0o444)
         r = cli.t_edit_file({"path": "ro.txt", "old_string": "stare", "new_string": "nowe"})
         self.assertIn("tylko do odczytu", r)
-        self.assertEqual(Path("ro.txt").read_text(), "stare\n")
+        self.assertEqual(Path("ro.txt").read_text(encoding="utf-8"), "stare\n")
         with self.assertRaises(PermissionError):
             cli._atomic_write(Path("ro.txt").resolve(), b"x")
 
     def test_mode_kept_and_no_temp_left(self):
-        Path("run.sh").write_text("echo 1\n")
+        Path("run.sh").write_text("echo 1\n", encoding="utf-8")
         os.chmod("run.sh", 0o750)
         cli.t_edit_file({"path": "run.sh", "old_string": "1", "new_string": "2"})
-        self.assertEqual(stat.S_IMODE(os.stat("run.sh").st_mode), 0o750)
+        if os.name != "nt":   # bity wykonywania istnieją tylko w POSIX
+            self.assertEqual(stat.S_IMODE(os.stat("run.sh").st_mode), 0o750)
         self.assertEqual([p.name for p in Path(".").iterdir() if p.name.endswith(".codo-tmp")], [])
 
     def test_windows_lock_is_retried_then_explained(self):
         target = Path("f.txt").resolve()
-        target.write_text("a")
+        target.write_text("a", encoding="utf-8")
         real = os.replace
         calls = []
 
@@ -330,7 +331,7 @@ class AtomicWrite(InFolder):
         with patch.object(cli.os, "name", "nt"), patch.object(cli, "_long_path", lambda p: p), \
                 patch.object(cli.os, "replace", flaky), patch.object(cli._time if hasattr(cli, "_time") else __import__("time"), "sleep", lambda s: None):
             cli._atomic_write(target, b"b")
-        self.assertEqual(target.read_text(), "b")
+        self.assertEqual(target.read_text(encoding="utf-8"), "b")
         self.assertEqual(len(calls), 3)
         e = PermissionError(13, "x")
         e.winerror = 32
@@ -339,7 +340,7 @@ class AtomicWrite(InFolder):
 
 class Paths(InFolder):
     def test_quoted_file_url_and_at_paths(self):
-        Path("moj plik.txt").write_text("treść\n")
+        Path("moj plik.txt").write_text("treść\n", encoding="utf-8")
         self.assertIn("treść", cli.t_read_file({"path": '"moj plik.txt"'}))
         self.assertIn("treść", cli.t_read_file({"path": "@moj plik.txt"}))
         self.assertIn("treść", cli.t_read_file({"path": (self.root / "moj plik.txt").as_uri()}))
@@ -348,20 +349,20 @@ class Paths(InFolder):
         other = tempfile.TemporaryDirectory()
         self.addCleanup(other.cleanup)
         f = Path(other.name) / "sekret.txt"
-        f.write_text("tajne")
+        f.write_text("tajne", encoding="utf-8")
         with patch.object(cli, "_can_ask_outside", lambda: False):
             r = cli.t_read_file({"path": str(f)})
             self.assertIn("poza folderem projektu", r)
             r = cli.run_tool("write_file", {"path": str(f), "content": "x"}, True)
             self.assertIn("poza", cli.t_read_file({"path": os.path.relpath(f, self.root)}))
         self.assertTrue(r.startswith("BŁĄD"), r)
-        self.assertEqual(f.read_text(), "tajne")
+        self.assertEqual(f.read_text(encoding="utf-8"), "tajne")
 
     def test_outside_project_with_consent_has_backup_and_undo(self):
         other = tempfile.TemporaryDirectory()
         self.addCleanup(other.cleanup)
         f = Path(other.name).resolve() / "notatka.txt"
-        f.write_text("stara\n")
+        f.write_text("stara\n", encoding="utf-8")
         asked = []
         with patch.object(cli, "_can_ask_outside", lambda: True), \
                 patch.object(cli, "confirm_action", lambda *a, **k: asked.append(a) or True):
@@ -369,19 +370,19 @@ class Paths(InFolder):
             self.assertFalse(r.startswith("BŁĄD"), r)
             self.run_tool("edit_file", {"path": str(f), "old_string": "nowa", "new_string": "najnowsza"})
         self.assertEqual(len(asked), 1)   # zgoda zapamiętana na folder
-        self.assertEqual(f.read_text(), "najnowsza\n")
+        self.assertEqual(f.read_text(encoding="utf-8"), "najnowsza\n")
         self.assertTrue(list((self.root / ".doma/backups/_poza").rglob("notatka.txt.*.bak")))
         self.undo()
-        self.assertEqual(f.read_text(), "nowa\n")
+        self.assertEqual(f.read_text(encoding="utf-8"), "nowa\n")
         self.undo()
-        self.assertEqual(f.read_text(), "stara\n")
+        self.assertEqual(f.read_text(encoding="utf-8"), "stara\n")
 
     def test_parallel_read_outside_project_does_not_ask(self):
         other = tempfile.TemporaryDirectory()
         self.addCleanup(other.cleanup)
         f = Path(other.name) / "a.txt"
-        f.write_text("x")
-        Path("b.txt").write_text("y")
+        f.write_text("x", encoding="utf-8")
+        Path("b.txt").write_text("y", encoding="utf-8")
         calls = [{"id": "1", "function": {"name": "read_file", "arguments": json.dumps({"path": str(f)})}},
                  {"id": "2", "function": {"name": "read_file", "arguments": json.dumps({"path": "b.txt"})}}]
         with patch.object(cli, "_can_ask_outside", lambda: True), \
@@ -395,18 +396,18 @@ class BackupsUndo(InFolder):
     def test_many_edits_of_one_file_undo_step_by_step(self):
         self.run_tool("write_file", {"path": "f.txt", "content": "v1\n"})
         for v in ("v2", "v3", "v4"):
-            prev = Path("f.txt").read_text().strip()
+            prev = Path("f.txt").read_text(encoding="utf-8").strip()
             self.run_tool("edit_file", {"path": "f.txt", "old_string": prev, "new_string": v})
-        self.assertEqual(Path("f.txt").read_text(), "v4\n")
+        self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), "v4\n")
         for want in ("v3\n", "v2\n", "v1\n"):
             self.undo()
-            self.assertEqual(Path("f.txt").read_text(), want)
+            self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), want)
         self.undo()
         self.assertFalse(Path("f.txt").exists())   # nowy plik: cofnięcie = usunięcie
         self.assertIn("Nic do cofnięcia", self.undo())
 
     def test_every_write_tool_backs_up(self):
-        Path("f.txt").write_text("a\nb\n")
+        Path("f.txt").write_text("a\nb\n", encoding="utf-8")
         for name, args in (("edit_file", {"old_string": "a", "new_string": "A"}),
                            ("multi_edit", {"edits": [{"old_string": "b", "new_string": "B"}]}),
                            ("replace_lines", {"start_line": 1, "new_string": "1"}),
@@ -418,23 +419,23 @@ class BackupsUndo(InFolder):
         self.assertEqual(len(baks), 5)
         for want in ("0\n1\nB\n", "1\nB\n", "A\nB\n", "A\nb\n", "a\nb\n"):
             self.undo()
-            self.assertEqual(Path("f.txt").read_text(), want)
+            self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), want)
 
     def test_file_ops_are_undoable(self):
-        Path("a.txt").write_text("A")
-        Path("b.txt").write_text("B")
+        Path("a.txt").write_text("A", encoding="utf-8")
+        Path("b.txt").write_text("B", encoding="utf-8")
         self.assertIn("Przeniesiono", self.run_tool("file_op", {"action": "rename", "path": "a.txt", "dest": "c.txt"}))
         self.assertIn("Skopiowano", self.run_tool("file_op", {"action": "copy", "path": "c.txt", "dest": "b.txt",
                                                                "overwrite": True}))
-        self.assertEqual(Path("b.txt").read_text(), "A")
+        self.assertEqual(Path("b.txt").read_text(encoding="utf-8"), "A")
         self.assertIn("Usunięto", self.run_tool("file_op", {"action": "delete", "path": "c.txt"}))
         self.assertFalse(Path("c.txt").exists())
         self.undo()   # usunięcie
-        self.assertEqual(Path("c.txt").read_text(), "A")
+        self.assertEqual(Path("c.txt").read_text(encoding="utf-8"), "A")
         self.undo()   # kopia z nadpisaniem: b.txt wraca
-        self.assertEqual(Path("b.txt").read_text(), "B")
+        self.assertEqual(Path("b.txt").read_text(encoding="utf-8"), "B")
         self.undo()   # przeniesienie
-        self.assertEqual(Path("a.txt").read_text(), "A")
+        self.assertEqual(Path("a.txt").read_text(encoding="utf-8"), "A")
         self.assertFalse(Path("c.txt").exists())
 
     def test_file_op_guards(self):
@@ -445,19 +446,19 @@ class BackupsUndo(InFolder):
 
     def test_rename_only_letter_case(self):
         """NTFS/APFS: „Raport.TXT” → „raport.txt” to ta sama pozycja; overwrite=true nie może usunąć pliku."""
-        Path("Raport.TXT").write_text("treść\n")
+        Path("Raport.TXT").write_text("treść\n", encoding="utf-8")
         Path("Dir").mkdir()
-        Path("Dir/x.txt").write_text("x")
+        Path("Dir/x.txt").write_text("x", encoding="utf-8")
         if not Path("raport.txt").exists():
             self.skipTest("system plików rozróżnia wielkość liter")
         r = cli.t_file_op({"action": "rename", "path": "Raport.TXT", "dest": "raport.txt", "overwrite": True})
         self.assertNotIn("BŁĄD", r)
         self.assertIn("raport.txt", os.listdir("."))
-        self.assertEqual(Path("raport.txt").read_text(), "treść\n")
+        self.assertEqual(Path("raport.txt").read_text(encoding="utf-8"), "treść\n")
         r = cli.t_file_op({"action": "move", "path": "Dir", "dest": "dir"})
         self.assertNotIn("BŁĄD", r)
         self.assertIn("dir", os.listdir("."))
-        self.assertEqual(Path("dir/x.txt").read_text(), "x")
+        self.assertEqual(Path("dir/x.txt").read_text(encoding="utf-8"), "x")
 
     def test_scaffold_and_write_page_go_through_undo(self):
         r = self.run_tool("scaffold", {"template": "static", "path": "site"})
@@ -598,11 +599,11 @@ class Search(InFolder):
         if subprocess.run(["git", "--version"], capture_output=True).returncode != 0:
             self.skipTest("brak gita")
         subprocess.run(["git", "init", "-q"], check=True)
-        Path(".gitignore").write_text("ignored/\n")
+        Path(".gitignore").write_text("ignored/\n", encoding="utf-8")
         Path("ignored").mkdir()
-        Path("ignored/a.txt").write_text("szukane\n")
+        Path("ignored/a.txt").write_text("szukane\n", encoding="utf-8")
         Path("node_modules").mkdir()
-        Path("node_modules/b.txt").write_text("szukane\n")
+        Path("node_modules/b.txt").write_text("szukane\n", encoding="utf-8")
         Path("dobry.txt").write_bytes("szukane żółw\n".encode("cp1250"))
         Path("obraz.bin").write_bytes(b"\x00szukane\x00")
         with patch("shutil.which", lambda n: None):
@@ -618,7 +619,7 @@ class Search(InFolder):
         self.assertIn("1  Tytuł", out)
         self.assertIn("Sekcja", out)
         self.assertNotIn("nie nagłówek", out)
-        Path("m.go").write_text("package main\n\nfunc main() {}\n\ntype Klient struct {}\n")
+        Path("m.go").write_text("package main\n\nfunc main() {}\n\ntype Klient struct {}\n", encoding="utf-8")
         out = cli.t_outline({"path": "m.go"})
         self.assertIn("main", out)
         self.assertIn("Klient", out)

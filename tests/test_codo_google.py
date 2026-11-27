@@ -9,6 +9,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
@@ -115,7 +117,7 @@ class GoogleTests(unittest.TestCase):
             {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "dysk", "arguments": {"akcja": "lista"}}},
         )) + "\n"
         env = {**os.environ, "HOME": str(self.home), "DOMA_CONFIG_DIR": str(self.home / "cfg")}
-        r = subprocess.run([sys.executable, SCRIPT, "mcp"], input=wejscie, capture_output=True, text=True, env=env, timeout=60)
+        r = subprocess.run([sys.executable, SCRIPT, "mcp"], input=wejscie, capture_output=True, text=True, env=env, timeout=60, encoding="utf-8")
         linie = [json.loads(x) for x in r.stdout.splitlines()]
         self.assertEqual([m["id"] for m in linie], [1, 2, 3])
         nazwy = [t["name"] for t in linie[1]["result"]["tools"]]

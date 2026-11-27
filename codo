@@ -5094,6 +5094,12 @@ def _in_project(path: Path) -> bool:
         return False
 
 
+def _cwd_real() -> Path:
+    """Katalog roboczy po resolve(), do relative_to() ze ścieżkami po resolve(). Na Windows getcwd() potrafi
+    zwrócić krótką nazwę 8.3 (C:\\Users\\RUNNER~1, z %TEMP%) albo literę dysku małą; resolve() daje pełną."""
+    return Path.cwd().resolve()
+
+
 def _resolve_arg(p) -> Path:
     p = _clean_path_arg(p)
     base = Path.cwd().resolve()
@@ -5651,7 +5657,7 @@ def _doma_ignored() -> None:
 def _git_head_text(path: Path) -> str | None:
     """Treść pliku z ostatniego commita (None poza gitem albo dla nowego pliku)."""
     try:
-        rel = path.relative_to(Path.cwd())
+        rel = path.relative_to(_cwd_real())
         out = subprocess.run(["git", "show", f"HEAD:./{rel.as_posix()}"], capture_output=True, timeout=10,
                              stdin=subprocess.DEVNULL)
     except (ValueError, OSError, subprocess.SubprocessError):
@@ -5937,7 +5943,7 @@ def t_diff(args):
     cmd = ["git", "-C", str(Path.cwd()), "diff", "--no-color"]
     rel = args.get("path")
     if rel:
-        cmd += ["--", str(_safe_path(rel).relative_to(Path.cwd()))]
+        cmd += ["--", str(_safe_path(rel).relative_to(_cwd_real()))]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=30)
     except FileNotFoundError:
@@ -6032,7 +6038,7 @@ def t_check(args):
                 break
     for f in targets:
         suf = f.suffix.lower()
-        rel = f.relative_to(Path.cwd())
+        rel = f.relative_to(_cwd_real())
         try:
             if suf == ".json":
                 _json.loads(f.read_text(encoding="utf-8-sig")); checked += 1
@@ -9099,7 +9105,7 @@ def t_find_files(args):
                     or (flat != pattern and fnmatch.fnmatch(rel, flat))):
                 try:
                     try:
-                        shown = str(f.relative_to(Path.cwd()))
+                        shown = f.relative_to(_cwd_real()).as_posix()   # jak na Linuksie: src/a.ts, nie src\\a.ts
                     except ValueError:
                         shown = str(f)
                     found.append((f.stat().st_mtime, shown))
@@ -9143,20 +9149,29 @@ def t_grep(args):
         cmd += ["--hidden", "--no-require-git", "-g", "!.env", "-g", "!.env.*"]
         for d in _SKIP_DIRS:
             cmd += ["-g", f"!{d}/"]
-        cmd += ["-e", pattern, str(root)]
+        if IS_WIN:
+            cmd += ["--path-separator", "/"]
+        # Ścieżka względna: ripgrep wypisze src/app.py także wtedy, gdy cwd na Windows ma krótką nazwę 8.3
+        # (C:\\Users\\RUNNER~1), a root po resolve() długą; obcinanie przedrostka cwd zostawiało pełną ścieżkę.
+        try:
+            rg_root = root.relative_to(_cwd_real()).as_posix()
+        except ValueError:
+            rg_root = str(root)
+        cmd += ["-e", pattern, rg_root]
 
         def shown(out: str, note: str = "") -> str:
             lines = []
             cwd = str(Path.cwd()) + os.sep
             for line in out.splitlines():
-                lines.append(line[len(cwd):] if line.startswith(cwd) else line)
+                line = line[len(cwd):] if line.startswith(cwd) else line
+                lines.append(line[2:] if rg_root == "." and line.startswith("./") else line)
                 if len(lines) >= limit:
                     lines.append(f"… (obcięte do {limit} wierszy — zawęź wzorzec, path albo glob)")
                     break
             return ("\n".join(lines) or "(brak trafień)") + note
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",  # nosec B603
-                                  errors="replace", timeout=60, cwd=str(Path.cwd()))
+                                  errors="replace", timeout=60, cwd=str(Path.cwd()), stdin=subprocess.DEVNULL)
             if proc.returncode in (0, 1):
                 return shown(proc.stdout)
             if proc.returncode == 2 and proc.stdout.strip():
@@ -9186,7 +9201,7 @@ def t_grep(args):
             if f.stat().st_size > 2_000_000 or _is_binary(f) or re.match(r"\.env($|\.)", f.name) and f.name not in (".env.example", ".env.sample"):
                 return
             try:
-                rel = str(f.relative_to(Path.cwd()))
+                rel = f.relative_to(_cwd_real()).as_posix()   # ten sam zapis co ripgrep z --path-separator /
             except ValueError:
                 rel = str(f)   # kopia innego członka zespołu poza tym folderem
             lines = _decode_text(f.read_bytes())[0].split("\n")   # cp1250, UTF-16 i BOM jak w read_file
@@ -11200,7 +11215,7 @@ def _print_edit(entry: dict) -> None:
     """Zwięzły diff po zapisie: numery linii, tło zielone/czerwone (do 16 linii)."""
     path = entry["path"]
     try:
-        rel = path.relative_to(Path.cwd())
+        rel = path.relative_to(_cwd_real())
     except ValueError:
         rel = path
     added, removed = entry["added"], entry["removed"]
@@ -14240,7 +14255,8 @@ def _at_matches(value: str) -> list:
             continue
         if name in ("node_modules", "__pycache__", ".git"):
             continue
-        full = (os.path.join(base_dir, name) if base_dir else name) + ("/" if e.is_dir() else "")
+        # Folder tak, jak go wpisano (src/ zostaje src/, także na Windows, gdzie os.path.join dałby src\\).
+        full = typed[:len(typed) - len(prefix)] + name + ("/" if e.is_dir() else "")
         out.append(("@" + full, _L("folder") if e.is_dir() else _L("plik")))
         if len(out) >= 8:
             break
@@ -15413,7 +15429,7 @@ def _app_changes() -> None:
         return
     for path in dict.fromkeys(SESSION.get("edited", [])):
         try:
-            rel = str(Path(path).relative_to(Path.cwd()))
+            rel = str(Path(path).relative_to(_cwd_real()))
         except ValueError:
             rel = str(path)
         files.append({"path": rel, "status": "modified", "added": 0, "removed": 0, "diff": ""})
@@ -15899,6 +15915,12 @@ def app_server(creds: dict | None, model: str | None) -> int:
     out = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8")
     sys.stdout = sys.stderr
     _APP["out"] = out
+    # Polecenia przychodzą w UTF-8 (okno, zespół, grupa, porównanie piszą UTF-8). Na Windows stdin z potoku
+    # miał kodowanie ANSI (cp1252): „zespół” z okna docierało jako „zespĂłĹ‚”, a znaki spoza strony kodowej jako „?”.
+    try:
+        sys.stdin.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError, OSError):
+        pass  # nosec B110 — stdin podmieniony (testy) albo brak
     # Domyślnie okno działa lokalnie (bez lustra sesji na serwerze). Tryb „Synced” (ustawienie app_sync,
     # tylko z kontem DomaAI) pokazuje sesję w aplikacji DomaAI na telefonie i w przeglądarce.
     SESSION["app"] = True
@@ -17045,7 +17067,7 @@ def t_dysk(args: dict, ask=None) -> str:
                 odwiedzone += 1
                 for n in dirnames + filenames:
                     if fraza in n.casefold():
-                        wyniki.append(str((Path(dirpath) / n).relative_to(root)) + ("/" if n in dirnames else ""))
+                        wyniki.append((Path(dirpath) / n).relative_to(root).as_posix() + ("/" if n in dirnames else ""))
                 if len(wyniki) >= 60 or odwiedzone > 4000:
                     break
             return json.dumps({"konto": foldery[0][0], "wyniki": wyniki[:60],
@@ -17053,7 +17075,7 @@ def t_dysk(args: dict, ask=None) -> str:
         if akcja == "lista":
             p = _dysk_sciezka(root, str(args.get("folder") or ""))
             pozycje = sorted(p.iterdir(), key=lambda c: (not c.is_dir(), c.name.casefold()))
-            return json.dumps({"folder": str(p.relative_to(root)) if p != root else "",
+            return json.dumps({"folder": p.relative_to(root).as_posix() if p != root else "",
                                "pozycje": [c.name + ("/" if c.is_dir() else "") for c in pozycje if not c.name.startswith(".")][:300]},
                               ensure_ascii=False)
         if akcja == "czytaj":
@@ -17067,12 +17089,12 @@ def t_dysk(args: dict, ask=None) -> str:
                 return _L("BŁĄD: z_projektu musi wskazywać plik w folderze projektu.")
             cel_dir = _dysk_sciezka(root, str(args.get("folder") or ""))
             cel = cel_dir / zrodlo.name
-            pytanie = _Lf("Skopiować {0} na Dysk Google ({1})?", zrodlo.name, str(cel.relative_to(root)))
+            pytanie = _Lf("Skopiować {0} na Dysk Google ({1})?", zrodlo.name, cel.relative_to(root).as_posix())
             if not (ask or (lambda q: confirm_action(_L("Dysk Google"), q)))(pytanie):
                 return _L("User nie zgodził się na zapis na Dysku.")
             cel_dir.mkdir(parents=True, exist_ok=True)
             __import__('shutil').copy2(zrodlo, cel)
-            return json.dumps({"ok": True, "zapisano": str(cel.relative_to(root))}, ensure_ascii=False)
+            return json.dumps({"ok": True, "zapisano": cel.relative_to(root).as_posix()}, ensure_ascii=False)
     except (OSError, ValueError) as e:
         return f"BŁĄD: {e}"
     return _L("BŁĄD: akcja to szukaj, lista, czytaj albo zapisz.")
@@ -17709,6 +17731,13 @@ def mcp_server(argv: list | None = None) -> int:
                           CODO_ZESPOL_ROLA="lead" if role == "lead" else "member")
     wyjscie = sys.stdout
     sys.stdout = sys.stderr   # każdy print z reszty Codo idzie do logu agenta, nie do protokołu
+    # MCP po stdio to UTF-8. Na Windows potok miał kodowanie ANSI: polskie znaki w narzędziach i wynikach
+    # wychodziły jako „?”, a nazwy z wejścia agenta (claude.exe, codex) się rozjeżdżały.
+    for _s in (sys.stdin, wyjscie):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass  # nosec B110 — strumień podmieniony (testy) albo brak
 
     def odpisz(msg_id, wynik=None, blad=None):
         m = {"jsonrpc": "2.0", "id": msg_id}
@@ -20706,7 +20735,8 @@ def _team_spawn_supervisor(run_dir) -> int:
     cmd = [*_self_cmd(_team_script()), "team", "supervise", "--dir", str(run_dir)]
     if sys.platform == "darwin" and shutil.which("caffeinate") and (run.get("policy") or {}).get("background", True):
         cmd = ["caffeinate", "-i", *cmd]
-    env = {**os.environ, "CODO_NO_CLEAR": "1", "DOMA_PLAIN": "1", "PYTHONUNBUFFERED": "1", "NO_COLOR": "1"}
+    env = {**os.environ, "CODO_NO_CLEAR": "1", "DOMA_PLAIN": "1", "PYTHONUNBUFFERED": "1", "NO_COLOR": "1",
+           "PYTHONIOENCODING": "utf-8"}   # praca.log czytany jako UTF-8 (na Windows potok/plik miał cp1252)
     for k in ("CODO_ZESPOL_DIR", "CODO_ZESPOL_CZLONEK", "CODO_ZESPOL_ROLA"):
         env.pop(k, None)
     kwargs = {"stdin": subprocess.DEVNULL, "env": env, "cwd": str(run.get("project") or Path(run_dir).parent)}
@@ -25083,7 +25113,8 @@ def work_background(argv_rest: list) -> int:
     cmd = [*_self_cmd(script), "work", *argv_rest, "--w-tle"]
     if sys.platform == "darwin" and shutil.which("caffeinate"):
         cmd = ["caffeinate", "-i", *cmd]
-    env = {**os.environ, "CODO_NO_CLEAR": "1", "DOMA_PLAIN": "1", "PYTHONUNBUFFERED": "1", "NO_COLOR": "1"}
+    env = {**os.environ, "CODO_NO_CLEAR": "1", "DOMA_PLAIN": "1", "PYTHONUNBUFFERED": "1", "NO_COLOR": "1",
+           "PYTHONIOENCODING": "utf-8"}   # praca.log czytany jako UTF-8 (na Windows potok/plik miał cp1252)
     kwargs = {"stdin": subprocess.DEVNULL, "env": env, "cwd": str(Path.cwd())}
     if IS_WIN:
         kwargs["creationflags"] = 0x00000008 | 0x00000200   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
@@ -25589,7 +25620,7 @@ def _repl(creds: dict, model: str | None, auto_yes: bool) -> int:
                 paths = []
                 for path in SESSION["edited"]:
                     try:
-                        paths.append(str(path.relative_to(Path.cwd())))
+                        paths.append(str(path.relative_to(_cwd_real())))
                     except ValueError:
                         paths.append(str(path))
                 panel(_L("Zmienione pliki"), paths or [_L("Brak zmian w tej sesji.")])

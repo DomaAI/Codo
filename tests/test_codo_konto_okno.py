@@ -8,7 +8,9 @@ import io
 import json
 from pathlib import Path
 
-import pytest
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import jako_unittest, pytest  # noqa: E402
 
 loader = importlib.machinery.SourceFileLoader(
     "doma_cli_konto_okno", str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")))
@@ -109,7 +111,7 @@ def test_logowanie_haslem_paruje_i_wylogowuje_sesje(okno, monkeypatch):
     e = ostatnie(zdarzenia)
     assert e["state"] == "done" and e["name"] == "Ala Testowa" and e["plan"] == "pro"
     assert e["email"] == "ala@example.com"
-    dev = json.loads((tmp / "device.json").read_text())
+    dev = json.loads((tmp / "device.json").read_text(encoding="utf-8"))
     assert dev["device_id"] == "dev-1"
     assert not (tmp / "credentials.json").exists()
     paths = [c[1] for c in api.calls]
@@ -127,7 +129,7 @@ def test_haslo_nie_trafia_do_zdarzen_ani_na_dysk(okno, monkeypatch):
     assert HASLO not in calosc
     for p in tmp.rglob("*"):
         if p.is_file():
-            assert HASLO not in p.read_text(errors="ignore")
+            assert HASLO not in p.read_text(errors="ignore", encoding="utf-8")
 
 
 def test_zle_haslo_przy_polu_hasla(okno, monkeypatch):
@@ -271,7 +273,7 @@ def test_poprzednie_urzadzenie_odparowane(okno, monkeypatch):
     assert "/cli/device/logout" not in [c[1] for c in api.calls[:3]]
     tokeny = [c for c in api.calls if c[1] == "/cli/pair/token"]
     assert tokeny[0][2]["device_id"] == "stare"
-    assert json.loads((tmp / "device.json").read_text())["device_id"] == "dev-1"
+    assert json.loads((tmp / "device.json").read_text(encoding="utf-8"))["device_id"] == "dev-1"
 
 
 def test_czytnik_przyjmuje_konto_od_razu(okno, monkeypatch):
@@ -284,3 +286,6 @@ def test_czytnik_przyjmuje_konto_od_razu(okno, monkeypatch):
     time.sleep(0.1)
     assert seen and seen[0]["action"] == "cancel"
     assert all(m.get("type") != "account" for m in inbox)
+
+
+load_tests = jako_unittest(globals())

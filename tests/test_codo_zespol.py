@@ -20,6 +20,11 @@ import unittest
 import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+# Codo w procesie potomnym pisze do potoku w UTF-8 (na Windows potok ma stronę kodową ANSI, cp1252).
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import atrapa, zamknij_stdin  # noqa: E402
 
 _ROOT = Path(tempfile.mkdtemp(prefix="codo-zespol-")).resolve()
 _HOME = _ROOT / "home"
@@ -31,7 +36,7 @@ for _k in ("GIT_AUTHOR_EMAIL", "GIT_COMMITTER_EMAIL", "GIT_AUTHOR_NAME", "GIT_CO
            "CODO_ZESPOL_CZLONEK", "CODO_ZESPOL_ROLA", "CODO_PROVIDER", "CODO_APP_MODE", "CODO_NO_HISTORY"):
     os.environ.pop(_k, None)
 # Bez agentów z tego komputera: „mix” i katalog mózgów nie mogą sięgnąć po prawdziwego agenta.
-(_CFG / "settings.json").write_text(json.dumps({"agents_off": True, "lang": "pl"}))
+(_CFG / "settings.json").write_text(json.dumps({"agents_off": True, "lang": "pl"}), encoding="utf-8")
 
 SCRIPT = str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma"))
 _loader = importlib.machinery.SourceFileLoader("codo_zespol", SCRIPT)
@@ -78,7 +83,7 @@ MESSAGE_KEYS = {"seq", "id", "from", "to", "text", "task_id", "ts"}
 
 def git(path, *args, check=True):
     r = subprocess.run(["git", "-C", str(path), "-c", "user.name=Test", "-c", "user.email=t@example.com", *args],
-                       capture_output=True, text=True, stdin=subprocess.DEVNULL)
+                       capture_output=True, text=True, stdin=subprocess.DEVNULL, encoding="utf-8")
     if check and r.returncode:
         raise AssertionError(f"git {args}: {r.stderr}")
     return r.stdout.strip()
@@ -88,7 +93,7 @@ def make_repo(root: Path) -> Path:
     proj = root / "projekt"
     proj.mkdir(parents=True)
     git(proj, "init", "-q", "-b", "main")
-    (proj / "README.md").write_text("# Projekt\n\nlinia 1\n")
+    (proj / "README.md").write_text("# Projekt\n\nlinia 1\n", encoding="utf-8")
     git(proj, "add", "-A")
     git(proj, "commit", "-q", "-m", "start")
     return proj
@@ -206,7 +211,7 @@ class TablicaTests(unittest.TestCase):
                 "while True:\n    t, e = st.task_claim(sys.argv[3])\n    if not t: break\n    got.append(t['id'])\n"
                 "print(json.dumps(got))\n")
         procs = [subprocess.Popen([sys.executable, "-c", code, SCRIPT, str(self.dir), who], stdout=subprocess.PIPE,
-                                  text=True, env=os.environ) for who in ("a", "b")]
+                                  text=True, env=os.environ, encoding="utf-8") for who in ("a", "b")]
         got = [json.loads(p.communicate(timeout=120)[0]) for p in procs]
         self.assertFalse(set(got[0]) & set(got[1]), got)
         self.assertEqual(sorted(got[0] + got[1], key=lambda x: int(x[1:])), [f"T{i}" for i in range(1, 13)])
@@ -316,16 +321,16 @@ class GitTests(unittest.TestCase):
         branches = git(self.proj, "branch", "--format=%(refname:short)").split()
         self.assertIn(integ, branches)
         self.assertIn(integ + "--a", branches)          # bez kolizji gałęzi „a” i „a/b”
-        self.assertIn(".doma/", (self.proj / ".git" / "info" / "exclude").read_text())
-        t = self.finish_task(sup, st, "a", "T1", lambda wt: (wt / "a.txt").write_text("od a\n"))
+        self.assertIn(".doma/", (self.proj / ".git" / "info" / "exclude").read_text(encoding="utf-8"))
+        t = self.finish_task(sup, st, "a", "T1", lambda wt: (wt / "a.txt").write_text("od a\n", encoding="utf-8"))
         self.assertEqual((t["status"], t["merge"]["state"]), ("done", "merged"))
         self.assertEqual(git(self.proj, "show", f"{integ}:a.txt"), "od a")
         self.assertIn("zespół T1", git(self.proj, "log", "--format=%s", integ + "--a"))   # automatyczny commit
         self.assertFalse(list((Path(sup.member("a")["worktree"]) / ".doma").glob("*")) and
                          ".doma" in git(self.proj, "ls-tree", "-r", "--name-only", integ))
-        t = self.finish_task(sup, st, "a", "T2", lambda wt: (wt / "README.md").write_text("# Projekt\n\nlinia od a\n"))
+        t = self.finish_task(sup, st, "a", "T2", lambda wt: (wt / "README.md").write_text("# Projekt\n\nlinia od a\n", encoding="utf-8"))
         self.assertEqual(t["status"], "done")
-        t = self.finish_task(sup, st, "b", "T3", lambda wt: (wt / "README.md").write_text("# Projekt\n\nlinia od b\n"))
+        t = self.finish_task(sup, st, "b", "T3", lambda wt: (wt / "README.md").write_text("# Projekt\n\nlinia od b\n", encoding="utf-8"))
         self.assertEqual((t["status"], t["merge"]["state"], t["merge"]["conflicts"]), ("in_progress", "conflict", ["README.md"]))
         self.assertNotEqual(subprocess.run(["git", "-C", run["integration_path"], "rev-parse", "-q", "--verify",
                                             "MERGE_HEAD"], capture_output=True).returncode, 0)   # merge --abort
@@ -338,14 +343,14 @@ class GitTests(unittest.TestCase):
         done = [e for e in st.events() if e["type"] == "team_done"][-1]
         self.assertEqual(done["diff_stat"]["files"], 2)
         self.assertEqual(done["apply_options"], ["merge", "branch"])
-        (self.proj / "README.md").write_text("zmiana człowieka\n")
+        (self.proj / "README.md").write_text("zmiana człowieka\n", encoding="utf-8")
         ev = cli.team_apply(run_dir, "merge")
         self.assertFalse(ev["ok"])
         self.assertIn("niezatwierdzone", ev["detail"])
         git(self.proj, "checkout", "--", "README.md")
         ev = cli.team_apply(run_dir, "merge")
         self.assertTrue(ev["ok"], ev)
-        self.assertEqual((self.proj / "a.txt").read_text(), "od a\n")
+        self.assertEqual((self.proj / "a.txt").read_text(encoding="utf-8"), "od a\n")
         self.assertEqual(st.load_run()["status"], "applied")
         res = cli.team_cleanup(run_dir)
         self.assertTrue(res["ok"], res)
@@ -359,7 +364,7 @@ class GitTests(unittest.TestCase):
         run_dir, st, sup = self.run_team([{"title": "Plik", "assignee": "a"}], check="false")
         integ_path = st.load_run()["integration_path"]
         head = git(integ_path, "rev-parse", "HEAD")
-        t = self.finish_task(sup, st, "a", "T1", lambda wt: (wt / "x.txt").write_text("x\n"))
+        t = self.finish_task(sup, st, "a", "T1", lambda wt: (wt / "x.txt").write_text("x\n", encoding="utf-8"))
         self.assertEqual((t["status"], t["merge"]["state"]), ("in_progress", "check_failed"))
         self.assertEqual(git(integ_path, "rev-parse", "HEAD"), head)    # reset --hard HEAD~1
         self.assertFalse((Path(integ_path) / "x.txt").exists())
@@ -514,7 +519,7 @@ class PrzegladTests(unittest.TestCase):
         st.task_create("template", [{"title": "Plik A", "assignee": "a", "detail": "Utwórz a.txt"}])
         sup = boot(run_dir)
         wt = Path(sup.member("a")["worktree"])
-        (wt / "a.txt").write_text("pierwsza wersja\n")
+        (wt / "a.txt").write_text("pierwsza wersja\n", encoding="utf-8")
         st.task_update("a", "T1", "done", "Zapisałem a.txt w swojej kopii")
         turn(sup, "a")
         t = task(st, "T1")
@@ -533,7 +538,7 @@ class PrzegladTests(unittest.TestCase):
         self.assertEqual((t["status"], t["review"]["round"], t["commit"]), ("in_progress", 1, ""))
         self.assertIn("[ZESPÓŁ: POPRAWKI T1]", sup.procs["a"].sent[-1])
         self.assertIn("Dopisz drugą linię", sup.procs["a"].sent[-1])
-        (wt / "a.txt").write_text("pierwsza wersja\ndruga linia\n")
+        (wt / "a.txt").write_text("pierwsza wersja\ndruga linia\n", encoding="utf-8")
         st.task_update("a", "T1", "done", "Dopisałem drugą linię w a.txt")
         turn(sup, "a")
         self.assertEqual(task(st, "T1")["status"], "review")
@@ -642,7 +647,7 @@ class ZgodyTests(unittest.TestCase):
         wt = Path(sup.member("a")["worktree"])
         integ = st.load_run()["integration_branch"]
         for i in (1, 2, 3):
-            (wt / f"p{i}.txt").write_text(f"plik {i}\n")
+            (wt / f"p{i}.txt").write_text(f"plik {i}\n", encoding="utf-8")
             st.task_update("a", f"T{i}", "done", f"Zapisałem p{i}.txt w kopii")
             turn(sup, "a")
             self.assertEqual(task(st, f"T{i}")["merge"]["state"], "waiting_human")
@@ -662,7 +667,7 @@ class ZgodyTests(unittest.TestCase):
                 self.assertEqual((t["status"], t["review"]["by"], t["review"]["verdict"]), ("in_progress", "human", "changes"))
                 self.assertIn("Człowiek nie przyjął", sup.procs["a"].sent[-1])
                 self.assertEqual(events(st, "team_merge", task_id="T2")[-1]["state"], "rejected")
-                (wt / "p2.txt").write_text("plik 2\ndruga linia\n")
+                (wt / "p2.txt").write_text("plik 2\ndruga linia\n", encoding="utf-8")
                 turn(sup, "a", "Poprawiłem plik p2.txt, teraz dwie linie.")      # wynik z ostatniej wiadomości
                 self.assertEqual(task(st, "T2")["merge"]["state"], "waiting_human")
                 st.control(type="merge_decide", task_id="T2", approve=True)
@@ -695,11 +700,11 @@ class KonfliktTests(unittest.TestCase):
         st.task_create("template", [{"title": "README od A", "assignee": "a"}, {"title": "README od B", "assignee": "b"}])
         sup = boot(run_dir)
         wa, wb = Path(sup.member("a")["worktree"]), Path(sup.member("b")["worktree"])
-        (wa / "README.md").write_text("# Projekt\n\nlinia od a\n")
+        (wa / "README.md").write_text("# Projekt\n\nlinia od a\n", encoding="utf-8")
         st.task_update("a", "T1", "done", "Zmieniłem README w kopii a")
         turn(sup, "a")
         self.merge(sup)
-        (wb / "README.md").write_text("# Projekt\n\nlinia od b\n")
+        (wb / "README.md").write_text("# Projekt\n\nlinia od b\n", encoding="utf-8")
         st.task_update("b", "T2", "done", "Zmieniłem README w kopii b")
         turn(sup, "b")
         self.merge(sup)
@@ -708,15 +713,15 @@ class KonfliktTests(unittest.TestCase):
         self.assertIn("README.md", prompt)
         self.assertEqual(subprocess.run(["git", "-C", str(wb), "rev-parse", "-q", "--verify", "MERGE_HEAD"],
                                         capture_output=True).returncode, 0)    # scalanie trwa w kopii wykonawcy
-        self.assertIn("<<<<<<<", (wb / "README.md").read_text())
+        self.assertIn("<<<<<<<", (wb / "README.md").read_text(encoding="utf-8"))
         st.task_update("b", "T2", "done", "Konflikt bez zmian, znaczniki zostały")   # znaczniki: kolejna próba
         turn(sup, "b")
         t = task(st, "T2")
         self.assertEqual((t["status"], t["merge"]["state"]), ("in_progress", "conflict"))
         # merge --abort i od razu kolejna próba: nadzorca znów zaczyna scalanie w kopii b
         self.assertEqual(sum("[ZESPÓŁ: KONFLIKT T2]" in x for x in sup.procs["b"].sent if isinstance(x, str)), 2)
-        self.assertIn("<<<<<<<", (wb / "README.md").read_text())
-        (wb / "README.md").write_text("# Projekt\n\nlinia od a\nlinia od b\n")
+        self.assertIn("<<<<<<<", (wb / "README.md").read_text(encoding="utf-8"))
+        (wb / "README.md").write_text("# Projekt\n\nlinia od a\nlinia od b\n", encoding="utf-8")
         st.task_update("b", "T2", "done", "Połączyłem obie linie w README")
         turn(sup, "b")
         self.merge(sup)
@@ -735,15 +740,15 @@ class KonfliktTests(unittest.TestCase):
         sup = boot(run_dir)
         integ = st.load_run()["integration_branch"]
         head = git(self.proj, "rev-parse", integ)
-        (Path(sup.member("a")["worktree"]) / "a.txt").write_text("od a\n")
+        (Path(sup.member("a")["worktree"]) / "a.txt").write_text("od a\n", encoding="utf-8")
         st.task_update("a", "T1", "done", "Zapisałem a.txt w kopii a")
         turn(sup, "a")
         self.assertEqual((task(st, "T1")["status"], git(self.proj, "rev-parse", integ)), ("merge_queue", head))
         sup.tick(0)
         self.assertIn("[ZESPÓŁ: ZADANIE T2]", sup.procs["b"].sent[-1])          # zależność czeka w kolejce
         wb = Path(sup.member("b")["worktree"])
-        self.assertEqual((wb / "a.txt").read_text(), "od a\n")                  # commit zależności w kopii b
-        (wb / "b.txt").write_text("od b\n")
+        self.assertEqual((wb / "a.txt").read_text(encoding="utf-8"), "od a\n")                  # commit zależności w kopii b
+        (wb / "b.txt").write_text("od b\n", encoding="utf-8")
         st.task_update("b", "T2", "done", "Zapisałem b.txt w kopii b")
         turn(sup, "b")
         for _ in range(20):
@@ -880,15 +885,15 @@ class DiffLogTests(unittest.TestCase):
         st = cli.TeamStore(run_dir)
         st.task_create("template", [{"title": "Plik A", "assignee": "a"}, {"title": "W toku", "assignee": "b"}])
         sup = boot(run_dir)
-        (Path(sup.member("a")["worktree"]) / "a.txt").write_text("od a\n")
+        (Path(sup.member("a")["worktree"]) / "a.txt").write_text("od a\n", encoding="utf-8")
         st.task_update("a", "T1", "done", "Zapisałem a.txt w kopii")
         sup.procs["a"].emit({"type": "tool", "naglowek": "write_file a.txt"})
         turn(sup, "a")
         sup.merge_thread.join(60)
         sup.tick(0)
         wb = Path(sup.member("b")["worktree"])
-        (wb / "README.md").write_text("# Projekt\n\nzmiana b\n")
-        (wb / "nowy.txt").write_text("raz\ndwa\n")
+        (wb / "README.md").write_text("# Projekt\n\nzmiana b\n", encoding="utf-8")
+        (wb / "nowy.txt").write_text("raz\ndwa\n", encoding="utf-8")
         d = cli._team_diff(run_dir)
         self.assertEqual((d["scope"], [(f["path"], f["status"], f["added"]) for f in d["files"]]), ("all", [("a.txt", "A", 1)]))
         d = cli._team_diff(run_dir, member="b")
@@ -918,7 +923,7 @@ class PrIKanalTests(unittest.TestCase):
         st = cli.TeamStore(run_dir)
         st.task_create("template", [{"title": "Plik", "assignee": "a"}])
         sup = boot(run_dir)
-        (Path(sup.member("a")["worktree"]) / "x.txt").write_text("x\n")
+        (Path(sup.member("a")["worktree"]) / "x.txt").write_text("x\n", encoding="utf-8")
         st.task_update("a", "T1", "done", "Zapisałem x.txt w kopii")
         turn(sup, "a")
         sup.merge_thread.join(60)
@@ -942,17 +947,19 @@ class PrIKanalTests(unittest.TestCase):
             ev = cli.team_apply(run_dir, "pr")
         self.assertIn("gh", ev["detail"])
         log = self.root / "gh.log"
-        gh = self.root / "gh"
-        gh.write_text(f"#!/bin/sh\necho \"$@\" >> {log}\n[ \"$1\" = pr ] && echo https://github.com/test/projekt/pull/7\nexit 0\n")
-        gh.chmod(0o755)
+        gh = atrapa(self.root, "gh", "import sys\n"
+                    f"with open({str(log)!r}, 'a', encoding='utf-8') as f:\n"
+                    "    f.write(' '.join(sys.argv[1:]) + '\\n')\n"
+                    "if sys.argv[1:2] == ['pr']:\n"
+                    "    print('https://github.com/test/projekt/pull/7')\n")
         with unittest.mock.patch.object(cli, "_gh_bin", return_value=str(gh)):
             ev = cli.team_apply(run_dir, "pr", title="Plik x")
         self.assertTrue(ev["ok"], ev)
         self.assertEqual(ev["pr_url"], "https://github.com/test/projekt/pull/7")
         integ = st.load_run()["integration_branch"]
-        self.assertIn(integ, subprocess.run(["git", "-C", str(bare), "branch"], capture_output=True, text=True).stdout)
-        self.assertIn(f"--head {integ}", log.read_text())
-        self.assertIn("--base main", log.read_text())
+        self.assertIn(integ, subprocess.run(["git", "-C", str(bare), "branch"], capture_output=True, text=True, encoding="utf-8").stdout)
+        self.assertIn(f"--head {integ}", log.read_text(encoding="utf-8"))
+        self.assertIn("--base main", log.read_text(encoding="utf-8"))
         self.assertEqual(git(self.proj, "rev-parse", "--abbrev-ref", "HEAD"), "main")   # projekt bez zmiany gałęzi
         cli.team_cleanup(run_dir, keep_branches=True)
 
@@ -1027,7 +1034,7 @@ class McpZespolTests(unittest.TestCase):
     def rpc(self, who, *msgs):
         p = subprocess.run([sys.executable, SCRIPT, "mcp", "--zespol", str(self.dir), "--czlonek", who],
                            input="".join(json.dumps(m) + "\n" for m in msgs), capture_output=True, text=True,
-                           timeout=60, env=os.environ, cwd=self.root)
+                           timeout=60, env=os.environ, cwd=self.root, encoding="utf-8")
         return [json.loads(x) for x in p.stdout.splitlines() if x.strip()]
 
     def test_serwer_mcp_tylko_z_narzedziami_zespolu(self):
@@ -1178,9 +1185,9 @@ def model_env(root: Path) -> dict:
     cfg.mkdir(parents=True)
     (cfg / "konta.json").write_text(json.dumps({"konta": {"atrapa": {
         "base_url": f"http://127.0.0.1:{srv.server_address[1]}/v1", "api_key": "sk-test", "name": "Atrapa",
-        "model": "atrapa-1"}}, "aktywne": "atrapa"}))
+        "model": "atrapa-1"}}, "aktywne": "atrapa"}), encoding="utf-8")
     (cfg / "settings.json").write_text(json.dumps({"provider": "endpoint", "model_endpoint": "@atrapa/atrapa-1",
-                                                   "lang": "pl", "agents_off": True}))
+                                                   "lang": "pl", "agents_off": True}), encoding="utf-8")
     env = dict(os.environ, HOME=str(home), USERPROFILE=str(home), DOMA_CONFIG_DIR=str(cfg), CODO_LANG="pl",
                CODO_ONLINE="1", NO_COLOR="1", PYTHONUNBUFFERED="1", CODO_TEAM_SCRIPT=SCRIPT)
     return srv, env
@@ -1189,7 +1196,7 @@ def model_env(root: Path) -> dict:
 def kill_run(run_dir: Path):
     """Sprzątanie po teście: nadzorca i członkowie nie mogą zostać w tle."""
     try:
-        run = json.loads((run_dir / "run.json").read_text())
+        run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     pids = [run.get("supervisor_pid")] + [m.get("pid") for m in run.get("members") or []]
@@ -1199,7 +1206,7 @@ def kill_run(run_dir: Path):
             os.kill(pid, 0)
         except OSError:
             continue
-        st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
+        st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, encoding="utf-8").stdout.strip()
         if st and not st.startswith("Z"):
             alive.append(pid)
             try:
@@ -1219,7 +1226,7 @@ class _ProcesyBase(unittest.TestCase):
         self.proj = make_repo(self.root)
         (self.proj / ".codo" / "zespoly").mkdir(parents=True)
         (self.proj / ".codo" / "zespoly" / "e2e.json").write_text(json.dumps(
-            tpl([mem("a"), mem("b")], check="git status --short") | {"name": "e2e"}))
+            tpl([mem("a"), mem("b")], check="git status --short") | {"name": "e2e"}), encoding="utf-8")
         git(self.proj, "add", "-A")
         git(self.proj, "commit", "-q", "-m", "szablon")
         self.run_dirs = []
@@ -1237,11 +1244,11 @@ class E2ETests(_ProcesyBase):
     def test_codo_team_run_do_konca(self):
         r = subprocess.run([sys.executable, SCRIPT, "team", "run", "Dodaj pliki a i b", "--szablon", "e2e", "--yes"],
                            cwd=self.proj, env=self.env, capture_output=True, text=True, timeout=180,
-                           stdin=subprocess.DEVNULL)
+                           stdin=subprocess.DEVNULL, encoding="utf-8")
         self.assertTrue((self.proj / ".doma" / "zespoly").exists(), r.stdout + r.stderr)
         runs = sorted((self.proj / ".doma" / "zespoly").iterdir())
         self.run_dirs += runs
-        log = (runs[0] / "praca.log").read_text() if runs else ""
+        log = (runs[0] / "praca.log").read_text(encoding="utf-8") if runs else ""
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr + log)
         self.assertIn("Zespół skończył", r.stdout)
         st = cli.TeamStore(runs[0])
@@ -1260,10 +1267,10 @@ class E2ETests(_ProcesyBase):
         self.assertTrue(lead_calls)
         self.assertTrue(all("team_task_create" in json.dumps(c.get("tools")) for c in lead_calls))
         r = subprocess.run([sys.executable, SCRIPT, "team", "status", "--json"], cwd=self.proj, env=self.env,
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(json.loads(r.stdout)["status"], "review_final")
         r = subprocess.run([sys.executable, SCRIPT, "team", "apply", runs[0].name, "--branch"], cwd=self.proj,
-                           env=self.env, capture_output=True, text=True, timeout=60)
+                           env=self.env, capture_output=True, text=True, timeout=60, encoding="utf-8")
         self.assertEqual(r.returncode, 0, r.stdout)
 
 
@@ -1272,7 +1279,7 @@ class WznowienieTests(_ProcesyBase):
 
     def cli(self, *args, timeout=60):
         return subprocess.run([sys.executable, SCRIPT, "team", *args], cwd=self.proj, env=self.env, capture_output=True,
-                              text=True, timeout=timeout, stdin=subprocess.DEVNULL)
+                              text=True, timeout=timeout, stdin=subprocess.DEVNULL, encoding="utf-8")
 
     def wait_for(self, st, pred, timeout=90):
         end = time.time() + timeout
@@ -1303,7 +1310,7 @@ class WznowienieTests(_ProcesyBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         seq = st.seq()
         ask = self.wait_for(st, lambda e: e["type"] == "team_ask" and e["seq"] > seq)
-        log_b = (run_dir / "log" / "b.jsonl").read_text()
+        log_b = (run_dir / "log" / "b.jsonl").read_text(encoding="utf-8")
         self.assertIn('"resumed"', log_b)                             # członek wrócił do swojej rozmowy
         r = self.cli("answer", run_dir.name, ask["ask_id"], "t")
         self.assertEqual(r.returncode, 0, r.stderr)
@@ -1335,7 +1342,7 @@ class _AppBase(unittest.TestCase):
 
     def tearDown(self):
         try:
-            self.p.stdin.close()
+            zamknij_stdin(self.p)
         except OSError:
             pass
         try:
@@ -1377,14 +1384,12 @@ class AppEtap2Tests(_AppBase):
     def prepare(self):
         (self.proj / ".codo" / "zespoly").mkdir(parents=True)
         (self.proj / ".codo" / "zespoly" / "e2e.json").write_text(json.dumps(
-            tpl([mem("a"), mem("b")], check="git status --short") | {"name": "e2e"}))
+            tpl([mem("a"), mem("b")], check="git status --short") | {"name": "e2e"}), encoding="utf-8")
         (self.proj / ".codo" / "zespoly" / "acp.json").write_text(json.dumps(
-            tpl([mem("a"), mem("b", brain="agent:goose")]) | {"name": "acp"}))
+            tpl([mem("a"), mem("b", brain="agent:goose")]) | {"name": "acp"}), encoding="utf-8")
         git(self.proj, "add", "-A")
         git(self.proj, "commit", "-q", "-m", "szablony")
-        fake = self.root / "bin-goose"
-        fake.write_text(f"#!{sys.executable}\n" + _FAKE_ACP_MEMBER)
-        fake.chmod(0o755)
+        fake = atrapa(self.root, "bin-goose", _FAKE_ACP_MEMBER)
         self.acp_log = self.root / "acp.log"
         self.env.update(CODO_AGENT_GOOSE=str(fake), FAKE_LOG=str(self.acp_log))
 
@@ -1425,7 +1430,7 @@ class AppEtap2Tests(_AppBase):
         t2 = task(st, "T2")
         self.assertEqual((t2["status"], t2["claimed_by"]), ("done", "b"))
         self.assertIn("Sprawdziłem projekt", t2["result"])                       # wynik z ostatniej wiadomości agenta
-        log = [json.loads(x) for x in self.acp_log.read_text().splitlines()]
+        log = [json.loads(x) for x in self.acp_log.read_text(encoding="utf-8").splitlines()]
         new = next(e["params"] for e in log if e["method"] == "session/new")
         zespol = next(m for m in new["mcpServers"] if m["name"] == "zespol")
         self.assertEqual(zespol["args"][-4:], ["--zespol", str(st.dir), "--czlonek", "b"])
@@ -1434,7 +1439,7 @@ class AppEtap2Tests(_AppBase):
 
     def test_wezel_zespolu_i_model_na_ture_w_workflowie(self):
         self.wait("ready", 60)
-        settings = (Path(self.env["DOMA_CONFIG_DIR"]) / "settings.json").read_text()
+        settings = (Path(self.env["DOMA_CONFIG_DIR"]) / "settings.json").read_text(encoding="utf-8")
         nodes = [{"id": "s", "kind": "start"},
                  {"id": "z", "kind": "team", "title": "Zespół", "prompt": "Dodaj pliki a i b ({{input}})",
                   "template": "e2e", "mode": "auto", "apply": True},
@@ -1460,11 +1465,11 @@ class AppEtap2Tests(_AppBase):
         rid = next(e["run_id"] for e in flow if e.get("node") == "z" and e.get("state") == "running")
         self.assertTrue(any(e["type"] == "team_started" and e["run_id"] == rid for e in self.seen))
         self.assertEqual(cli.TeamStore(self.proj / ".doma" / "zespoly" / rid).load_run()["source"]["kind"], "workflow")
-        self.assertEqual((self.proj / "b.txt").read_text(), "plik od b\n")   # apply: kolejne kroki widzą pliki
+        self.assertEqual((self.proj / "b.txt").read_text(encoding="utf-8"), "plik od b\n")   # apply: kolejne kroki widzą pliki
         last = [c for c in FakeTeamModel.calls if "Podsumuj:" in json.dumps(c.get("messages"), ensure_ascii=False)]
         self.assertTrue(last and last[-1]["model"] == "atrapa-2", [c.get("model") for c in last])
         self.assertIn("Zespół dodał pliki", json.dumps(last[-1]["messages"], ensure_ascii=False))
-        self.assertEqual((Path(self.env["DOMA_CONFIG_DIR"]) / "settings.json").read_text(), settings)
+        self.assertEqual((Path(self.env["DOMA_CONFIG_DIR"]) / "settings.json").read_text(encoding="utf-8"), settings)
         self.assertFalse([e for e in self.other if e.get("type") == "model"])
 
 
@@ -1521,7 +1526,7 @@ class KontraktTests(_AppBase):
         self.send(type="team_apply", run_id=rid, how="merge")
         applied = self.wait("team_applied", 60)
         self.assertTrue(applied["ok"], applied)
-        self.assertEqual((self.proj / "b.txt").read_text(), "plik od b\n")
+        self.assertEqual((self.proj / "b.txt").read_text(encoding="utf-8"), "plik od b\n")
         # zespół z rozmowy: cel i podsumowanie są w historii rozmowy, ale okno nie dostaje ich jako assistant/delta
         cfg = Path(self.env["DOMA_CONFIG_DIR"])
         saved = ""

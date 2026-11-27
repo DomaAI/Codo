@@ -11,7 +11,9 @@ import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-import pytest
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from codo_atrapy import jako_unittest, pytest  # noqa: E402
 
 loader = importlib.machinery.SourceFileLoader(
     "doma_cli_konto_kod", str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")))
@@ -192,16 +194,16 @@ def test_istniejace_konto_kod_paruje_mac_plan_i_email(serwer):
     e = ostatnie(zdarzenia)
     assert e["state"] == "done" and e["email"] == "ala@example.com"
     assert e["plan"] == "max" and e["name"] == "Ala Kowalska"
-    dev = json.loads((tmp / "device.json").read_text())
+    dev = json.loads((tmp / "device.json").read_text(encoding="utf-8"))
     assert dev["device_id"] == "dev-1" and dev["email"] == "ala@example.com"
-    info = json.loads((tmp / "account.json").read_text())
+    info = json.loads((tmp / "account.json").read_text(encoding="utf-8"))
     assert info == {"email": "ala@example.com", "name": "Ala Kowalska", "plan": "max"}
     paths = [z[1] for z in stan.zadania]
     assert paths[:4] == ["/auth/kod", "/auth/kod/weryfikuj", "/cli/pair/self", "/logout"]
     # Tokeny ani sekret urządzenia nie trafiają do zdarzeń okna.
     calosc = json.dumps(zdarzenia())
     assert TOKEN not in calosc and DEV_SECRET not in calosc
-    assert TOKEN not in (tmp / "account.json").read_text()
+    assert TOKEN not in (tmp / "account.json").read_text(encoding="utf-8")
     assert not (tmp / "credentials.json").exists()
 
 
@@ -244,7 +246,7 @@ def test_nowe_konto_imie_zgody_i_logowanie(serwer):
     form = [z for z in stan.zadania if z[1] == "/auth/kod/rejestracja"][-1][2]
     assert form == {"bilet": "bilet-1", "full_name": "Ola", "accepted_terms": "true", "accepted_privacy": "true",
                     "accepted_subscription_terms": "true", "age_acknowledged_16plus": "true", "zrodlo": "codo"}
-    info = json.loads((tmp / "account.json").read_text())
+    info = json.loads((tmp / "account.json").read_text(encoding="utf-8"))
     assert info["email"] == "nowa@example.com" and info["plan"] == "free"
     assert not (tmp / "device.json").exists()
 
@@ -371,3 +373,6 @@ def test_literowka_w_adresie_podpowiada_i_drugi_raz_wysyla(serwer):
     assert e["suggestion"] == "ala@icloud.com" and "ala@icloud.com" in e["error"]
     cli._app_account({"action": "send_code", "email": "ala@cloud.com"})
     assert stan.kody.get("ala@cloud.com") == "123456"
+
+
+load_tests = jako_unittest(globals())

@@ -46,13 +46,13 @@ class FileTools(InFolder):
         self.assertEqual(Path("f.txt").read_bytes(), b"a\nB")
 
     def test_line_numbers_match_grep_with_form_feed(self):
-        Path("f.py").write_text("a=1\n\x0c\nb=2\ntarget=3\n")
+        Path("f.py").write_text("a=1\n\x0c\nb=2\ntarget=3\n", encoding="utf-8")
         self.assertIn("4\ttarget=3", cli._read_one("f.py", 1, 50))
         cli.t_replace_lines({"path": "f.py", "start_line": 4, "new_string": "target=4"})
-        self.assertEqual(Path("f.py").read_text(), "a=1\n\x0c\nb=2\ntarget=4\n")
+        self.assertEqual(Path("f.py").read_text(encoding="utf-8"), "a=1\n\x0c\nb=2\ntarget=4\n")
 
     def test_read_past_end_says_how_long(self):
-        Path("f.txt").write_text("a\nb\n")
+        Path("f.txt").write_text("a\nb\n", encoding="utf-8")
         self.assertIn("ma 2 linii", cli._read_one("f.txt", 10, 5))
 
     def test_edit_mixed_line_endings(self):
@@ -62,29 +62,29 @@ class FileTools(InFolder):
         self.assertEqual(Path("f.txt").read_bytes(), b"X\r\nY\r\nz\n")
 
     def test_edit_empty_old_and_replace_all(self):
-        Path("f.txt").write_text("a a a\n")
+        Path("f.txt").write_text("a a a\n", encoding="utf-8")
         self.assertIn("pusty old_string", cli.t_edit_file({"path": "f.txt", "old_string": "", "new_string": "x"}))
         self.assertIn("replace_all", cli.t_edit_file({"path": "f.txt", "old_string": "a", "new_string": "b"}))
         cli.t_edit_file({"path": "f.txt", "old_string": "a", "new_string": "b", "replace_all": True})
-        self.assertEqual(Path("f.txt").read_text(), "b b b\n")
+        self.assertEqual(Path("f.txt").read_text(encoding="utf-8"), "b b b\n")
 
     def test_edit_near_miss_points_at_lines(self):
-        Path("f.py").write_text("def f():\n    return 1\n")
+        Path("f.py").write_text("def f():\n    return 1\n", encoding="utf-8")
         # 0.30.5: inne wcięcie przy jednym dopasowaniu = edycja z tolerancją (jak u najlepszych agentów)
         out = cli.t_edit_file({"path": "f.py", "old_string": "def f():\n  return 1", "new_string": "x"})
         self.assertIn("linie 1-2", out)
-        self.assertEqual(Path("f.py").read_text(), "x\n")
-        Path("f.py").write_text("def f():\n    return 1\n")
+        self.assertEqual(Path("f.py").read_text(encoding="utf-8"), "x\n")
+        Path("f.py").write_text("def f():\n    return 1\n", encoding="utf-8")
         out = cli.t_edit_file({"path": "f.py", "old_string": "def f():\n    return 2", "new_string": "x"})
         self.assertIn("linie 1-2", out)
         self.assertIn("Pierwsza różnica w linii 2", out)
 
     def test_delete_symlink_keeps_target(self):
-        Path("real.txt").write_text("keep")
+        Path("real.txt").write_text("keep", encoding="utf-8")
         os.symlink("real.txt", "lnk")
         out = cli.t_file_op({"action": "delete", "path": "lnk"}, auto_yes=True)
         self.assertFalse(out.startswith("BŁĄD"), out)
-        self.assertEqual(Path("real.txt").read_text(), "keep")
+        self.assertEqual(Path("real.txt").read_text(encoding="utf-8"), "keep")
         self.assertFalse(os.path.lexists("lnk"))
 
     def test_tilde_path_never_creates_tilde_folder(self):
@@ -93,30 +93,31 @@ class FileTools(InFolder):
         self.assertFalse(Path("~").exists())
 
     def test_atomic_write_keeps_mode(self):
-        Path("run.sh").write_text("echo 1\n")
+        Path("run.sh").write_text("echo 1\n", encoding="utf-8")
         os.chmod("run.sh", 0o755)
         cli.t_edit_file({"path": "run.sh", "old_string": "1", "new_string": "2"})
-        self.assertEqual(os.stat("run.sh").st_mode & 0o777, 0o755)
+        if os.name != "nt":   # bity wykonywania istnieją tylko w POSIX
+            self.assertEqual(os.stat("run.sh").st_mode & 0o777, 0o755)
         self.assertEqual([p.name for p in self.root.iterdir() if p.name.endswith(".codo-tmp")], [])
 
     def test_doma_folder_is_git_ignored_and_backups_pruned(self):
-        Path("f.txt").write_text("0\n")
+        Path("f.txt").write_text("0\n", encoding="utf-8")
         for i in range(cli._BACKUPS_KEEP + 5):
             cli._backup(self.root / "f.txt")
-        self.assertIn("*", (self.root / ".doma" / ".gitignore").read_text())
+        self.assertIn("*", (self.root / ".doma" / ".gitignore").read_text(encoding="utf-8"))
         _, baks = cli._backups_for(self.root / "f.txt")
         self.assertLessEqual(len(baks), cli._BACKUPS_KEEP)
 
     def test_find_files_skips_build_folders(self):
         (self.root / "target" / "x").mkdir(parents=True)
-        (self.root / "target" / "x" / "a.toml").write_text("")
-        Path("Cargo.toml").write_text("")
+        (self.root / "target" / "x" / "a.toml").write_text("", encoding="utf-8")
+        Path("Cargo.toml").write_text("", encoding="utf-8")
         self.assertEqual(cli.t_find_files({"pattern": "*.toml"}).strip(), "Cargo.toml")
 
     def test_grep_finds_hidden_but_not_env(self):
         (self.root / ".github").mkdir()
-        (self.root / ".github" / "ci.yml").write_text("needle\n")
-        Path(".env").write_text("needle=secret\n")
+        (self.root / ".github" / "ci.yml").write_text("needle\n", encoding="utf-8")
+        Path(".env").write_text("needle=secret\n", encoding="utf-8")
         out = cli.t_grep({"pattern": "needle"})
         self.assertIn("ci.yml", out)
         self.assertNotIn("secret", out)
@@ -288,14 +289,14 @@ class ReviewFixes(unittest.TestCase):
         self.assertTrue(cli._authorized_install_call("install", ok, msgs))
 
     def test_restore_oldest_backup_with_full_history(self):
-        Path("a.txt").write_text("teraz\n")
+        Path("a.txt").write_text("teraz\n", encoding="utf-8")
         bdir = Path(".doma/backups")
         bdir.mkdir(parents=True)
         for i in range(cli._BACKUPS_KEEP):
-            (bdir / f"a.txt.20260101-0000{i:02d}.bak").write_text(f"{i}\n")
+            (bdir / f"a.txt.20260101-0000{i:02d}.bak").write_text(f"{i}\n", encoding="utf-8")
         out = cli.t_restore({"path": "a.txt", "version": "20260101-000000"})
         self.assertTrue(out.startswith("Przywrócono"), out)
-        self.assertEqual(Path("a.txt").read_text(), "0\n")
+        self.assertEqual(Path("a.txt").read_text(encoding="utf-8"), "0\n")
 
     def test_continue_note_never_replaces_the_goal(self):
         messages = [{"role": "system", "content": "s"}, {"role": "user", "content": "Cel: GOAL"},
