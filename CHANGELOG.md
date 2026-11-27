@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.32.0
+
+### Word, Excel and PowerPoint edits, reviews and pull request checks, Windows fixes
+
+- **The agent edits documents in place.** New `office_edit`: replace text in Word without losing formatting (even across runs, headers and footers), add or delete paragraphs and headings, edit table cells and rows; set values and formulas in Excel cells and ranges, add rows and sheets with styles kept; replace text on PowerPoint slides, write speaker notes, add a slide from a layout; replace text in ODT and ODS. Several edits at once, all or nothing, with a diff before saving, a backup and `/undo`. Reading PowerPoint no longer drops the first slide.
+- **Review card in the conversation.** Findings marked important or minor, with "Fix this" and "Apply all fixes", and file:line links that open the Changes panel on that line.
+- **Pull request checks.** The window follows the checks every 30 seconds, shows failures first, sends failed logs to the agent with "Fix now", can fix failing checks on its own and merge when everything passes.
+- **HTML preview** in the Changes panel, sandboxed.
+- **Tested on real Windows.** `codo ui` started from another program no longer stops on the trust question, short 8.3 paths are expanded, git and gh output is read as UTF-8, files held by another program are saved in place or explained, case only renames work, and the Changes panel respects `core.autocrlf`. Windows window, NTFS and Edge checks now run in CI.
+
+### Fixes
+
+- A new binary file shows "new · PDF · 12 KB" instead of "+1 −0".
+- Sign in: the eyes follow what you type, and the disabled button is readable in dark mode.
+
 ## 0.31.0
 
 ### Working with files and on files
