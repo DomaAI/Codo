@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.30.3
+
+### Rooms and Compare on Windows and Linux
+
+- **Rooms.** Shared threads with several of your persistent agents. Write without a name and the lead answers, `@Name` calls one agent, `@all` everyone, and an agent that names another brings it in. Rooms live in `codo host`, so agents keep talking with the window closed, within the same limits as on Mac (6 steps without you, 60 messages an hour). Same `agent-rooms.json` as Codo for Mac.
+- **Compare models.** Pick two to four models in the model picker and send one message: each answers in its own card, read only, side by side. Continue with the one you like.
+- **Earlier team runs** come back after a restart, and you can join a running team again.
+- **Real provider logos** everywhere in the window, the same as on Mac.
+
+### Fixes
+
+- The switch to the backup brain is announced in English too.
+- Group lists read "Max, Josh and Mia".
+- Team budgets use the 𝔻 credit sign, and the status after a pull request says so.
+
 ## 0.30.2
 
 ### Model picker, teams and groups in the Windows and Linux app
