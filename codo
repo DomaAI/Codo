@@ -21216,8 +21216,11 @@ class TeamSupervisor:
             if m.get("status") == "starting":
                 self.set_member(m, status="idle")
         elif kind == "turn_start":
-            if ev.get("convo_id"):
+            if ev.get("convo_id") and m.get("convo_id") != ev["convo_id"]:
                 m["convo_id"] = ev["convo_id"]
+                # Od razu na dysk: nadzorca zabity (kill -9, zamknięty laptop) przed następnym zapisem run.json
+                # wznawiał członka bez jego rozmowy, bo convo_id było tylko w pamięci.
+                self.save(force=True)
         elif kind == "assistant":
             rt["texts"].append(str(ev.get("tekst") or ""))
         elif kind in ("tool_start", "tool"):

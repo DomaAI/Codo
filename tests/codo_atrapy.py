@@ -219,7 +219,7 @@ def jako_unittest(module_globals):
     return load_tests
 
 
-def sprzataj(tmp, sekundy: float = 15.0) -> None:
+def sprzataj(tmp, sekundy: float = 30.0) -> None:
     """TemporaryDirectory.cleanup() z ponowieniem na Windows: katalog bywa jeszcze zajęty przez proces potomny,
     który właśnie się kończy (WinError 32). Proces, który nie zniknie w tym czasie, wywraca test jak wcześniej."""
     import time

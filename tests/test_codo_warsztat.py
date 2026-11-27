@@ -17,6 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import test_codo_konta_agenci as base   # noqa: E402
 
 cli = base.cli
+# Agenci zainstalowani na maszynie (np. docker, copilot na runnerze) nie biorą udziału: silnik nie pyta ich
+# o wersję, a proces potomny nie zostaje w katalogu testu (Windows nie usunie katalogu roboczego procesu).
+_BEZ_AGENTOW = {f"CODO_AGENT_{k.upper().replace('-', '_')}": "/brak" for k in cli._AGENTS}
 
 
 class _Out:
@@ -158,7 +161,7 @@ class KsztaltAgentaTests(unittest.TestCase):
     def _serwer(self, cfg, wiadomosci, czekaj_na):
         """Wysyła wiadomości i czyta odpowiedzi, aż przyjdzie `czekaj_na` (stdin zostaje otwarty, jak w oknie)."""
         import subprocess
-        env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg)
+        env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg, **_BEZ_AGENTOW)
         p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")), "app-server"],
                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                              text=True, env=env, cwd=cfg, encoding="utf-8")
@@ -183,7 +186,9 @@ class KsztaltAgentaTests(unittest.TestCase):
 
     def test_ksztalt_zostaje_po_ponownym_uruchomieniu(self):
         import tempfile
-        with tempfile.TemporaryDirectory() as cfg:
+        tmpd = tempfile.TemporaryDirectory()
+        cfg = tmpd.name
+        try:
             self._serwer(cfg, [{"type": "agent_create", "name": "Kuba", "color": "#7C5CFF", "shape": "kula"},
                                {"type": "agent_shape", "shape": "kostka"}, {"type": "status"}], "status")
             st = json.loads(Path(cfg, "settings.json").read_text(encoding="utf-8"))
@@ -193,6 +198,8 @@ class KsztaltAgentaTests(unittest.TestCase):
             self.assertTrue(agenci)
             self.assertEqual(agenci[-1]["shape"], "kostka")
             self.assertEqual(agenci[-1]["name"], "Kuba")
+        finally:
+            sprzataj(tmpd)
 
 
 class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
@@ -235,7 +242,7 @@ class ZapisAgentaPrzyBledzieSerweraTests(unittest.TestCase):
             cfg = tmpd.name
             try:
                 Path(cfg, "credentials.json").write_text(json.dumps({"access_token": "t", "refresh_token": "r"}), encoding="utf-8")
-                env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg,
+                env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg, **_BEZ_AGENTOW,
                            DOMA_API_URL=f"http://127.0.0.1:{srv.server_address[1]}")
                 p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")),
                                       "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -282,7 +289,7 @@ class WorkflowKanalyTests(unittest.TestCase):
         import subprocess
         import tempfile
         with tempfile.TemporaryDirectory() as cfg:
-            env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg)
+            env = dict(os.environ, DOMA_CONFIG_DIR=cfg, DOMA_NO_SYNC="1", CODO_NO_HISTORY="1", HOME=cfg, USERPROFILE=cfg, **_BEZ_AGENTOW)
             p = subprocess.Popen([sys.executable, str(Path(os.environ.get("CODO_FILE") or Path(__file__).resolve().parents[1] / "static/cli/doma")), "app-server"],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
                                  text=True, env=env, cwd=cfg, encoding="utf-8")
