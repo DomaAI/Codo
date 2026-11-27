@@ -379,7 +379,11 @@ class CodoAcpTests(unittest.TestCase):
                 if "Zaczynam" in "".join(x for x in [self.log.read_text(encoding="utf-8") if self.log.exists() else ""]) or any(
                         e["msg"].get("method") == "session/prompt" for e in self._msgs()):
                     threading.Event().wait(0.3)
-                    os.kill(os.getpid(), signal.SIGINT)
+                    if os.name == "nt":
+                        # os.kill(getpid) na Windows to TerminateProcess całego przebiegu testów, nie Ctrl+C
+                        signal.raise_signal(signal.SIGINT)
+                    else:
+                        os.kill(os.getpid(), signal.SIGINT)
                     return
                 threading.Event().wait(0.05)
         t = threading.Thread(target=esc)

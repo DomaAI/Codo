@@ -1202,15 +1202,10 @@ def kill_run(run_dir: Path):
     pids = [run.get("supervisor_pid")] + [m.get("pid") for m in run.get("members") or []]
     alive = []
     for pid in [p for p in pids if p]:
-        try:
-            os.kill(pid, 0)
-        except OSError:
-            continue
-        st = subprocess.run(["ps", "-o", "stat=", "-p", str(pid)], capture_output=True, text=True, encoding="utf-8").stdout.strip()
-        if st and not st.startswith("Z"):
+        if cli._pid_alive(pid):   # bez zombie; na Windows bez ps (OpenProcess w silniku)
             alive.append(pid)
             try:
-                os.kill(pid, 9)
+                os.kill(pid, 9)   # Windows: TerminateProcess
             except OSError:
                 pass
     return alive

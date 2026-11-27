@@ -185,7 +185,7 @@ def start_ui(proj: Path, env: dict, *extra):
                          stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                          encoding="utf-8")
     url, seen = None, []
-    deadline = time.time() + 20
+    deadline = time.time() + 90   # wolne maszyny CI (macOS): silnik okna startuje kilkanaście sekund
     while time.time() < deadline and url is None:
         line = p.stdout.readline()
         if not line:
