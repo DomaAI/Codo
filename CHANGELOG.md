@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.32.3
+
+- **Role badges in every language.** Researcher and Reviewer badges next to agents use the full translated name (for example "Badacz" and "Recenzent" in Polish) instead of the English short word.
+- **Teams in progress.** The stack of member faces with "+N" no longer overlaps the team title.
+
 ## 0.32.2
 
 - **Windows fixes.** File search, grep and @ completion return relative paths with forward slashes, also when the working folder has a short 8.3 name. app-server and mcp read stdin as UTF-8. Claude Code and Codex installed through npm get multi-line arguments in full (no more .cmd shims). Team member logs are UTF-8.
