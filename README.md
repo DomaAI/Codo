@@ -7,7 +7,8 @@
 
 <p align="center">
   <b>Claude Code, Codex, Gemini CLI, any API or a local model. One app, one terminal, one crew.</b><br>
-  When one plan hits its limit, the same conversation keeps going on the next one.
+  When one plan hits its limit, the same conversation keeps going on the next one.<br>
+  Free and open source. If Codo saves your day, a ⭐ helps other developers find it.
 </p>
 
 <p align="center">
@@ -17,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="https://domaai.pl/pobierz-codo.html"><b>Download page</b></a>
+  <a href="https://domaai.pl/en/codo"><b>Website</b></a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
   <a href="#see-it-work">See it work</a>
   &nbsp;&nbsp;|&nbsp;&nbsp;
@@ -33,6 +34,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/DomaAI/Codo/stargazers"><img src="https://img.shields.io/github/stars/DomaAI/Codo?style=social" alt="GitHub stars"></a>
   <a href="https://github.com/DomaAI/Codo/actions/workflows/ci.yml"><img src="https://github.com/DomaAI/Codo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
   <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
@@ -107,7 +109,7 @@ codo ui     # the app in its own window
 codo        # the agent in your terminal
 ```
 
-Step by step help for every system: **[domaai.pl/pobierz-codo](https://domaai.pl/pobierz-codo.html)**
+Step by step help for every system (in Polish): **[domaai.pl/pobierz-codo](https://domaai.pl/pobierz-codo.html)**
 
 ## Use the plans you already pay for
 
