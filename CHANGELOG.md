@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.32.4
+
+- **The window fits every size.** The Changes panel never squeezes the conversation below a readable width: the sidebar hides first, then the panel narrows, and in a very narrow window it opens over the conversation.
+- **Sidebar in narrow windows.** It hides on its own and slides over the content from the sidebar button, Ctrl+0 or search. Drag its edge to set the width, double click to reset.
+- **Short windows.** The icon bar scrolls, the bot channels fold into one row of icons, and the command palette, dialogs and pop ups stay inside the window.
+- **Windows display scaling.** The window opens at a size that fits the screen at 125% and 150%, and a window larger than the screen shrinks and centers itself.
+- **Smooth resizing** without jumps while you drag the window edge.
+
 ## 0.32.3
 
 - **Role badges in every language.** Researcher and Reviewer badges next to agents use the full translated name (for example "Badacz" and "Recenzent" in Polish) instead of the English short word.
