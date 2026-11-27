@@ -9909,6 +9909,21 @@ def _blender_bridge_meta(create: bool = False):
         return None, None
 
 
+def _http_server(addr: tuple, handler):
+    """ThreadingHTTPServer bez socket.getfqdn() w server_bind: odwrotne DNS dla 127.0.0.1 potrafi trwać
+    kilkanaście sekund (macOS w CI, sieci z wolnym DNS) i tyle czekało okno `codo ui`, zanim podało adres."""
+    import http.server
+    import socketserver
+
+    class _Server(http.server.ThreadingHTTPServer):
+        def server_bind(self):
+            socketserver.TCPServer.server_bind(self)
+            host, port = self.server_address[:2]
+            self.server_name, self.server_port = str(host), port
+
+    return _Server(addr, handler)
+
+
 def _launch_detached(cmd_list: list | None = None, shell_cmd: str | None = None):
     """Start aplikacji okienkowej CAŁKOWICIE odłączonej od daemona: DEVNULL na
     wszystkich uchwytach (wnuk z pipe'em = wiszący worker) + nowa sesja/grupa."""
@@ -28619,7 +28634,7 @@ def _trig_hook_serve(bind: str, port: int, check, on_event):
             self._out(202, {"ok": True})
 
     try:
-        srv = http.server.ThreadingHTTPServer((bind, port), _Hook)
+        srv = _http_server((bind, port), _Hook)
     except OSError as exc:
         print(f"[wyzwalacze] serwer webhooków nie wstał na {bind}:{port}: {exc}", flush=True)
         return None
@@ -35449,7 +35464,6 @@ def codo_ui(args: list, model: str | None) -> int:
     """codo ui [folder] [--no-browser] [--port N]: okno Codo w przeglądarce (Windows, Linux, Mac)."""
     import secrets
     import time as _time
-    from http.server import ThreadingHTTPServer
     no_browser = "--no-browser" in args
     as_tab = "--tab" in args or "--karta" in args
     port = 0
@@ -35492,7 +35506,7 @@ def codo_ui(args: list, model: str | None) -> int:
             srv.shutdown()
 
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", port), _ui_handler(bridge, token, port_ref, quit_all))
+        server = _http_server(("127.0.0.1", port), _ui_handler(bridge, token, port_ref, quit_all))
     except OSError as exc:
         print(red(_Lf('✗ Nie mogę uruchomić okna na porcie {0}: {1}', port, exc)))
         return 1

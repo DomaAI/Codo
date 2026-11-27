@@ -22,19 +22,8 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Compile
         run: python -m py_compile codo
-      - name: Startup time (diagnostic)
-        run: |
-          python -c "import subprocess,sys,time;t=time.time();subprocess.run([sys.executable,'codo','version']);print('codo version: %.1f s' % (time.time()-t))"
-          python -X importtime -c "import ssl, http.server, urllib.request" 2>&1 | sort -t'|' -k2 -n | tail -5
-      - name: Window start time (diagnostic, macOS)
-        if: runner.os == 'macOS'
-        continue-on-error: true
-        run: |
-          mkdir -p "$RUNNER_TEMP/uip" "$RUNNER_TEMP/uih/cfg"
-          HOME="$RUNNER_TEMP/uih" DOMA_CONFIG_DIR="$RUNNER_TEMP/uih/cfg" DOMA_API_URL=http://127.0.0.1:9 NO_COLOR=1 \
-            python -c "import faulthandler,runpy,sys,time; t=time.time(); faulthandler.dump_traceback_later(6, exit=True); sys.argv=['codo','ui','$RUNNER_TEMP/uip','--no-browser']; runpy.run_path('codo', run_name='__main__')" < /dev/null 2>&1 | head -80 || true
       - name: Tests (no network, no model providers)
-        timeout-minutes: 30
+        timeout-minutes: 20
         env:
           CODO_FILE: ${{ github.workspace }}/codo
           CODO_LANG: pl   # tests check the Polish source strings
