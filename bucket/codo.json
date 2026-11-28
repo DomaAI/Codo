@@ -1,0 +1,25 @@
+{
+    "version": "0.32.5",
+    "description": "Team of AI agents on the plans you already pay for: Claude Code, Codex, Gemini CLI, any API or a local model.",
+    "homepage": "https://domaai.pl/en/codo",
+    "license": "Apache-2.0",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/DomaAI/Codo/releases/download/v0.32.5/codo-windows-x64.exe#/codo.exe",
+            "hash": "b53413e6d27a9d288a1e36696614385cbb343f4815835eb2116a4c3972419cfb"
+        }
+    },
+    "bin": "codo.exe",
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/DomaAI/Codo/releases/download/v$version/codo-windows-x64.exe#/codo.exe"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS",
+            "regex": "$sha256\\s+codo-windows-x64.exe"
+        }
+    }
+}

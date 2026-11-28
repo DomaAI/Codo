@@ -23,3 +23,17 @@ jobs:
             gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$d"
           done
           gh release list --limit 5
+      - name: Update Homebrew formula and Scoop manifest on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(tr -d '[:space:]' < .github/publish-tag)"
+          git fetch origin main
+          git worktree add ../main origin/main
+          gh release download "$tag" -p SHA256SUMS -O "$RUNNER_TEMP/SHA256SUMS"
+          cd ../main
+          bash .github/ci/update-packages.sh "${tag#v}" "$RUNNER_TEMP/SHA256SUMS"
+          if git diff --quiet; then echo "packages already at $tag"; exit 0; fi
+          git -c user.name="github-actions[bot]" -c user.email="41898729+github-actions[bot]@users.noreply.github.com" \
+            commit -am "Packages: Homebrew and Scoop to $tag"
+          git push origin HEAD:main

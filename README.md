@@ -37,6 +37,8 @@
   <a href="https://github.com/DomaAI/Codo/stargazers"><img src="https://img.shields.io/github/stars/DomaAI/Codo?style=social" alt="GitHub stars"></a>
   <a href="https://github.com/DomaAI/Codo/actions/workflows/ci.yml"><img src="https://github.com/DomaAI/Codo/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="https://github.com/DomaAI/Codo/releases/latest"><img src="https://img.shields.io/github/v/release/DomaAI/Codo" alt="Latest release"></a>
+  <a href="https://github.com/DomaAI/Codo/releases"><img src="https://img.shields.io/github/downloads/DomaAI/Codo/total" alt="Downloads"></a>
   <img src="https://img.shields.io/badge/python-3.9%2B-blue" alt="Python 3.9+">
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey" alt="macOS, Windows, Linux">
 </p>
@@ -48,6 +50,11 @@
 <p align="center">
   <img src="assets/demo/many-brains.webp" width="900" alt="Recording: a task runs on Claude Code, Claude Code reaches its plan limit and Codex finishes the same turn">
   <br><sub>Claude Code hits its plan limit in the middle of a task. Codex picks up the same turn, with the whole history, files and plan.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/DomaAI/Codo/stargazers"><img src="https://img.shields.io/github/stars/DomaAI/Codo?style=social" alt="GitHub stars"></a>
+  <br><sub>If Codo saves you a plan limit or two, a ⭐ helps other developers find it.</sub>
 </p>
 
 <a name="agents-that-work-together"></a>
@@ -107,6 +114,16 @@ irm https://github.com/DomaAI/Codo/releases/latest/download/install.ps1 | iex
 curl -fsSL https://github.com/DomaAI/Codo/releases/latest/download/install.sh | bash
 codo ui     # the app in its own window
 codo        # the agent in your terminal
+```
+
+**Homebrew** (macOS, Linux) and **Scoop** (Windows):
+
+```bash
+brew tap DomaAI/codo https://github.com/DomaAI/Codo && brew install codo
+```
+
+```powershell
+scoop bucket add codo https://github.com/DomaAI/Codo; scoop install codo
 ```
 
 Step by step help for every system (in Polish): **[domaai.pl/pobierz-codo](https://domaai.pl/pobierz-codo.html)**
