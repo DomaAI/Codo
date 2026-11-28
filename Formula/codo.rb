@@ -3,7 +3,6 @@
 class Codo < Formula
   desc "Team of AI agents on the plans you already pay for: Claude Code, Codex, Gemini CLI, any API"
   homepage "https://domaai.pl/en/codo"
-  version "0.32.5"
   license "Apache-2.0"
 
   on_macos do
